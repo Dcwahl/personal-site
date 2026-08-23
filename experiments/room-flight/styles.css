@@ -1,0 +1,188 @@
+:root {
+  color: #17140f;
+  background: #cfc493;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: #cfc493;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 14% 18%, rgb(255 255 255 / 7%), transparent 28%),
+    radial-gradient(circle at 76% 64%, rgb(70 52 25 / 4%), transparent 31%),
+    #cfc493;
+}
+
+body::before {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background-image:
+    repeating-radial-gradient(
+      circle at 18% 27%,
+      rgb(39 30 18 / 3%) 0,
+      rgb(39 30 18 / 3%) 0.45px,
+      transparent 0.8px,
+      transparent 4px
+    );
+  background-size: 7px 9px;
+  content: "";
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+main,
+canvas,
+.architecture {
+  position: fixed;
+  inset: 0;
+}
+
+h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.masthead {
+  position: fixed;
+  inset: max(2rem, env(safe-area-inset-top))
+    max(2.75rem, env(safe-area-inset-right)) auto
+    max(2.75rem, env(safe-area-inset-left));
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  letter-spacing: 0.035em;
+  text-transform: lowercase;
+}
+
+.wordmark {
+  font-size: 1rem;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.masthead a {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 0.3em;
+}
+
+.masthead a:hover,
+.masthead a:focus-visible {
+  text-decoration: underline;
+}
+
+.masthead a:focus-visible {
+  outline: 1px solid currentColor;
+  outline-offset: 0.35rem;
+}
+
+.architecture {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.architecture svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  shape-rendering: geometricPrecision;
+}
+
+.room__seams,
+.door__frame-face,
+.door__leaf,
+.door__edge,
+.door__outline {
+  stroke: rgb(23 20 15 / 72%);
+  stroke-width: 1.15;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.room__seams,
+.door__outline {
+  fill: none;
+}
+
+.door__opening {
+  fill: rgb(170 89 52 / 78%);
+}
+
+.door__frame-face {
+  fill: #c8bd8c;
+}
+
+.door__leaf {
+  fill: #cfc493;
+}
+
+.door__edge {
+  fill: rgb(170 89 52 / 88%);
+}
+
+.room--compact {
+  display: none;
+}
+
+canvas {
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.about-target {
+  position: fixed;
+  top: 0;
+  right: 0;
+}
+
+@media (max-width: 40rem) {
+  .masthead {
+    inset: max(1.25rem, env(safe-area-inset-top))
+      max(1.25rem, env(safe-area-inset-right)) auto
+      max(1.25rem, env(safe-area-inset-left));
+    font-size: 0.8125rem;
+  }
+
+  .wordmark {
+    font-size: 0.875rem;
+  }
+
+  .room--wide {
+    display: none;
+  }
+
+  .room--compact {
+    display: initial;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  canvas {
+    opacity: 0.88;
+  }
+}

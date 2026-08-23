@@ -1,0 +1,138 @@
+:root {
+  color: #000;
+  background-color: #cfc493;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  background-color: #cfc493;
+}
+
+main,
+canvas {
+  position: fixed;
+  inset: 0;
+}
+
+.scene {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 590px;
+  height: 410px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.scene--vase {
+  top: 68%;
+  left: 72%;
+  width: min(802px, 100vw);
+  height: auto;
+}
+
+.scene[hidden] {
+  display: none;
+}
+
+.scene--room {
+  width: min(779px, 100vw);
+  height: auto;
+}
+
+canvas {
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+nav {
+  position: fixed;
+  right: max(1rem, env(safe-area-inset-right));
+  bottom: max(1rem, env(safe-area-inset-bottom));
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid rgb(0 0 0 / 35%);
+  background: rgb(207 196 147 / 78%);
+  backdrop-filter: blur(6px);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+}
+
+nav span {
+  padding: 0 0.45rem;
+  opacity: 0.55;
+}
+
+nav div {
+  display: flex;
+  gap: 0.25rem;
+}
+
+nav i {
+  align-self: stretch;
+  width: 1px;
+  margin: 0.2rem 0.15rem;
+  background: rgb(0 0 0 / 24%);
+}
+
+button {
+  appearance: none;
+  border: 0;
+  padding: 0.45rem 0.55rem;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+button[aria-pressed="true"] {
+  background: #000;
+  color: #cfc493;
+}
+
+button:focus-visible {
+  outline: 2px solid #000;
+  outline-offset: 2px;
+}
+
+@media (max-width: 32rem) {
+  nav {
+    right: 50%;
+    max-width: calc(100vw - 2rem);
+    transform: translateX(50%);
+  }
+
+  nav span {
+    display: none;
+  }
+
+  button {
+    padding-inline: 0.42rem;
+  }
+}

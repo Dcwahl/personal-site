@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1586" height="992" viewBox="0 0 1586 992">
+<g id="horizon">
+  <path d="M0 493.7 L1586 493.7" stroke="#c8443c" stroke-width="1" stroke-dasharray="8 6" fill="none"/>
+  <circle cx="128.1" cy="493.7" r="5" fill="#c8443c"/>
+  <text x="142" y="482" font-family="monospace" font-size="15" fill="#c8443c">VP  (128, 494)</text>
+  <text x="16" y="518" font-family="monospace" font-size="15" fill="#c8443c">horizon / eye level</text>
+</g>
+<g id="rays" stroke="#c8443c" stroke-width="0.75" fill="none" opacity="0.45">
+  <path d="M128.1 493.7 L1586 188.3"/>
+  <path d="M128.1 493.7 L1586 566.6" stroke-dasharray="3 7"/>
+  <path d="M128.1 493.7 L1586 639.5" stroke-dasharray="3 7"/>
+  <path d="M128.1 493.7 L1586 712.5" stroke-dasharray="3 7"/>
+</g>
+<g id="room" stroke="#17140f" stroke-width="1.9" fill="none" stroke-linecap="round">
+  <path d="M1088.5 0 L1088.5 686.5"/>
+  <path d="M0 724.5 L1088.5 686.5"/>
+  <path d="M1088.5 686.5 L1586 784.8"/>
+</g>
+<g id="door-base">
+  <circle cx="1343.7" cy="736.9" r="6" fill="none" stroke="#2f7d5b" stroke-width="2"/>
+  <text x="1334" y="767" font-family="monospace" font-size="14" fill="#2f7d5b">near</text>
+  <circle cx="1493.4" cy="766.5" r="6" fill="none" stroke="#2f7d5b" stroke-width="2"/>
+  <text x="1483" y="796" font-family="monospace" font-size="14" fill="#2f7d5b">far</text>
+</g>
+</svg>

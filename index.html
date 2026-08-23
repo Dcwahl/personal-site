@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#dac9a4" />
+    <title>Diego Wahl</title>
+    <meta
+      name="description"
+      content="Diego Wahl — design portfolio."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Diego Wahl</h1>
+
+      <header class="masthead">
+        <span class="wordmark" aria-hidden="true">Diego Wahl</span>
+        <a href="#about">about</a>
+      </header>
+
+      <div class="room" aria-hidden="true">
+        <img class="room__door" src="door.svg" alt="" />
+        <svg class="room__seams" preserveAspectRatio="none">
+          <path data-seam="wallCorner" />
+          <path data-seam="leftFloor" />
+          <path data-seam="floorToDoor" />
+          <path data-seam="floorPastDoor" />
+        </svg>
+      </div>
+
+      <canvas aria-hidden="true"></canvas>
+    </main>
+
+    <script type="module" src="room.js"></script>
+    <script type="module" src="flight.js"></script>
+  </body>
+</html>

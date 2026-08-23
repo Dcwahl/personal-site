@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#cfc493" />
+    <title>Paper airplane study</title>
+    <link rel="stylesheet" href="styles.css?v=7" />
+  </head>
+  <body>
+    <main>
+      <h1>Paper airplane study</h1>
+      <img class="scene scene--room" src="../../test.png" alt="" />
+      <img
+        class="scene scene--vase"
+        src="../../vase-w-flower-1.png"
+        alt=""
+      />
+      <canvas aria-hidden="true"></canvas>
+
+      <nav aria-label="Paper airplane treatment">
+        <span>plane study</span>
+        <div role="group" aria-label="Plane shape">
+          <button type="button" data-shape="dart">dart</button>
+          <button type="button" data-shape="glider">glider</button>
+          <button type="button" data-shape="wingtips">wingtips</button>
+        </div>
+        <i aria-hidden="true"></i>
+        <div role="group" aria-label="Plane treatment">
+          <button type="button" data-variant="outline">outline</button>
+          <button type="button" data-variant="translucent">translucent</button>
+        </div>
+        <i aria-hidden="true"></i>
+        <div role="group" aria-label="Background image">
+          <button type="button" data-image-toggle>image on</button>
+        </div>
+      </nav>
+    </main>
+
+    <script type="module" src="plane.js?v=4"></script>
+  </body>
+</html>

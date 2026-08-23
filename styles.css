@@ -1,0 +1,119 @@
+:root {
+  --paper: #dac9a4;
+  --ink: #17140f;
+
+  color: var(--ink);
+  background: var(--paper);
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--paper);
+}
+
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  margin: 0;
+  overflow: hidden;
+  background: var(--paper);
+}
+
+main,
+canvas,
+.room {
+  position: fixed;
+  inset: 0;
+}
+
+h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ── room ─────────────────────────────────────────────────────────── */
+
+.room {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.room__seams {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/*
+ * The viewBox is kept 1:1 with CSS pixels by room.js, so stroke-width is
+ * already in CSS px and needs no vector-effect. Weight comes from JS so it can
+ * track the door art's scale — see ROOM.inkWeight in scene.js.
+ */
+.room__seams path {
+  fill: none;
+  stroke: rgb(23 20 15 / 88%);
+  stroke-width: var(--seam-weight, 1.9);
+  stroke-linecap: round;
+}
+
+/*
+ * Positioned entirely by the matrix() that room.js computes — transform-origin
+ * must stay at the top-left corner, since the solve works in raw image pixels.
+ */
+.room__door {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+
+/* ── chrome ───────────────────────────────────────────────────────── */
+
+.masthead {
+  position: fixed;
+  inset: max(2rem, env(safe-area-inset-top))
+    max(2.75rem, env(safe-area-inset-right)) auto
+    max(2.75rem, env(safe-area-inset-left));
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+}
+
+.wordmark {
+  font-size: 0.9375rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.masthead a {
+  color: inherit;
+  text-decoration: none;
+  text-underline-offset: 0.3em;
+}
+
+.masthead a:hover,
+.masthead a:focus-visible {
+  text-decoration: underline;
+}
+
+canvas {
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}

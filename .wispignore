@@ -1,0 +1,17 @@
+# Local documentation and tooling
+README.md
+TODO.md
+.claude/
+.DS_Store
+
+# Working studies
+experiments/
+
+# Source mockups and temporary art
+door-test-1.png
+door-test-fullsize-1.png
+rasterized-door-test-1.svg
+redesign-mockup.png
+resdesign-visual-test-1.png
+test.png
+vase-w-flower-1.png
