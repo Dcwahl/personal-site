@@ -71,6 +71,11 @@ export const robotDefaults = {
   armWidth: 0.072,
   armDepth: 0.078,
   shoulderDrop: 0.06, // below the top of the torso
+  /* Gait. At stepAngle 0 and rockAngle 0 the robot simply stands. */
+  phase: 0, // 0..1 over one full cycle, which is two steps
+  stepAngle: 0, // degrees each leg swings fore and aft of vertical
+  rockAngle: 0, // degrees the body leans onto the planted foot
+
   armSwing: 0, // degrees fore/aft at the shoulder; the walk will drive this
   armRaise: 42, // degrees out sideways, clearing the flank for the key
 
@@ -389,6 +394,46 @@ const mirrorZ = (quads) =>
     })),
   }));
 
+/* ── gait ─────────────────────────────────────────────────────────── */
+
+/**
+ * One clock drives the whole pose.
+ *
+ * It is clockwork, so every moving part comes off a single phase rather than
+ * having its own tuning. `phase` runs 0..1 over a full cycle — two steps.
+ *
+ * The leg angles are in antiphase and *cosine*, not sine, so the legs are at
+ * full split at phase 0 and pass each other at 0.25. That matters: passing is
+ * exactly when the swinging foot needs to clear the floor, and it is also when
+ * the rock is at its peak and the body is at its highest. All three line up
+ * without being made to.
+ *
+ * The rise and fall is not an invented sine, and it is not a formula either.
+ * With rigid legs and no knees the body must rise and fall twice a cycle — the
+ * compass gait — but the real contact is a foot *corner* at its own radius from
+ * the hip, not a point at the end of a pendulum, so the closed form is wrong by
+ * enough to push the toe through the floor. Instead the pose is built first and
+ * the body is then dropped until the planted foot rests exactly on the floor.
+ * The bob comes out of that constraint rather than being imposed on it, and it
+ * stays right for any foot shape or overhang.
+ */
+export function gait(phase, p) {
+  const turn = phase * Math.PI * 2;
+  const angle = p.stepAngle * Math.cos(turn);
+
+  // Lean onto the planted foot; the other one is then free to swing through.
+  const roll = p.rockAngle * Math.sin(turn);
+
+  return {
+    // Left leads at phase 0, right leads at 0.5.
+    legAngle: { left: angle, right: -angle },
+    roll,
+    // The body tips onto the *outer edge* of the planted foot, not its centre.
+    // Pivoting at the centre drives the foot's outer half through the floor.
+    pivotZ: (roll >= 0 ? 1 : -1) * (p.legSpread + p.footWidth / 2),
+  };
+}
+
 /* ── the body ─────────────────────────────────────────────────────── */
 
 export function buildRobot(params = {}) {
@@ -412,10 +457,14 @@ export function buildRobot(params = {}) {
     { x: 0, y: (ankle + hip) / 2, z: p.legSpread },
     { x: p.legDepth, y: p.legLength, z: p.legWidth },
   );
-  add("foot.left", foot);
-  add("foot.right", mirrorZ(foot));
-  add("leg.left", leg);
-  add("leg.right", mirrorZ(leg));
+  /* Leg and foot are one rigid piece on a toy — there is no ankle — so the
+   * foot tilts with the leg and the toy rocks onto its toe. */
+  const step = gait(p.phase, p);
+  const swung = (quads, angle) => hinge(quads, { x: 0, y: hip }, angle);
+  add("foot.left", swung(foot, step.legAngle.left));
+  add("foot.right", mirrorZ(swung(foot, step.legAngle.right)));
+  add("leg.left", swung(leg, step.legAngle.left));
+  add("leg.right", mirrorZ(swung(leg, step.legAngle.right)));
 
   /* Torso. The chest panel is a marking on the front face, not a proud box. */
   // Chamfering narrows the front face, so the panel is sized against the face
@@ -586,7 +635,30 @@ export function buildRobot(params = {}) {
     add(`key.${index}`, hinge(solid, { x: 0, y: keyY }, p.keyTurn)),
   );
 
-  return { parts, params: p, crown, shoulderLine };
+  /* The rock goes on last, over everything, so the legs swing beneath the body
+   * rather than with it. */
+  if (step.roll !== 0) {
+    const pivot = { y: 0, z: step.pivotZ };
+    for (const part of parts) part.quads = hingeX(part.quads, pivot, step.roll);
+  }
+
+  /* Then settle: drop the whole robot until the lower foot rests on the floor.
+   * This is what makes the bob correct rather than approximately correct, and
+   * it cannot let a toe through the floor by construction. */
+  const feet = parts.filter((part) => part.name.startsWith("foot."));
+  const contact = Math.min(
+    ...feet.flatMap((part) => part.quads.flatMap((q) => q.points.map((point) => point.y))),
+  );
+  if (Math.abs(contact) > 1e-9) {
+    for (const part of parts) {
+      part.quads = part.quads.map((q) => ({
+        ...q,
+        points: q.points.map((point) => ({ ...point, y: point.y - contact })),
+      }));
+    }
+  }
+
+  return { parts, params: p, crown, shoulderLine, step, lift: -contact };
 }
 
 /* ── placing it in the room ───────────────────────────────────────── */
