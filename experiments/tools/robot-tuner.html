@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Robot tuner</title>
+    <link rel="stylesheet" href="../../styles.css" />
+    <style>
+      /* The room fills the viewport exactly as it does on the site; the panel
+         floats over it, so what you tune is what the site would render. */
+      .panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+        width: 20rem;
+        padding: 0.9rem 1rem 3rem;
+        overflow-y: auto;
+        background: rgb(23 20 15 / 4%);
+        backdrop-filter: blur(6px);
+        border-left: 1px solid rgb(23 20 15 / 15%);
+        font-size: 11px;
+        line-height: 1.5;
+      }
+      .panel h2 {
+        margin: 1.1rem 0 0.3rem;
+        font-size: 10px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        opacity: 0.55;
+      }
+      .panel h2:first-of-type { margin-top: 0.2rem; }
+      /* styles.css makes the canvas inert on the real site. Here it is the
+         handle you grab to spin the robot. */
+      canvas { pointer-events: auto; cursor: grab; }
+      canvas.dragging { cursor: grabbing; }
+      .hint { margin-top: 0.5rem; opacity: 0.55; font-style: italic; }
+      .row { display: grid; grid-template-columns: 8.5rem 1fr 2.8rem; gap: 0.4rem; align-items: center; }
+      .row input[type="range"] { width: 100%; accent-color: #17140f; }
+      .row output { text-align: right; font-variant-numeric: tabular-nums; opacity: 0.7; }
+      .actions { display: flex; gap: 0.4rem; margin: 1rem 0 0.5rem; }
+      .actions button {
+        flex: 1; padding: 0.4rem; font: inherit; cursor: pointer;
+        color: var(--ink); background: transparent;
+        border: 1px solid rgb(23 20 15 / 30%); border-radius: 3px;
+      }
+      .actions button:hover { background: rgb(23 20 15 / 8%); }
+      .toggles { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
+      .toggles label { display: flex; gap: 0.3rem; align-items: center; cursor: pointer; }
+      textarea {
+        width: 100%; height: 7rem; margin-top: 0.5rem; padding: 0.4rem;
+        font: 10px/1.4 ui-monospace, monospace; color: var(--ink);
+        background: rgb(23 20 15 / 5%);
+        border: 1px solid rgb(23 20 15 / 20%); border-radius: 3px; resize: vertical;
+      }
+      .readout { margin-top: 0.6rem; opacity: 0.6; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="room" aria-hidden="true">
+        <img class="room__door" src="../../door.svg" alt="" />
+        <svg class="room__seams" preserveAspectRatio="none">
+          <path data-seam="wallCorner" /><path data-seam="leftFloor" />
+          <path data-seam="floorToDoor" /><path data-seam="floorPastDoor" />
+        </svg>
+      </div>
+      <canvas aria-hidden="true"></canvas>
+    </main>
+
+    <aside class="panel">
+      <div class="actions">
+        <button id="reset">reset</button>
+        <button id="copy">copy params</button>
+      </div>
+      <div class="toggles">
+        <label><input type="checkbox" id="wire" /> wireframe</label>
+        <label><input type="checkbox" id="marks" /> construction</label>
+        <label><input type="checkbox" id="spin" /> turntable</label>
+      </div>
+      <div class="readout" id="readout"></div>
+      <div class="hint">drag the scene to spin &middot; arrow keys nudge 5&deg; &middot; shift-drag to walk it around the floor</div>
+      <div id="sliders"></div>
+      <textarea id="dump" readonly></textarea>
+    </aside>
+
+    <script type="module">
+      import { buildScene } from "../../scene.js";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults } from "../../robot.js";
+      import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
+
+      /* Slider ranges. Anything not listed here is not meant to be tuned. */
+      const GROUPS = [
+        ["placement", [
+          ["height", 0.1, 0.8, 0.005],
+          ["standX", 0, 8, 0.05],
+          ["standZ", 0, 8, 0.05],
+          ["facing", -180, 180, 1],
+        ]],
+        ["legs and feet", [
+          ["footHeight", 0.01, 0.15, 0.005], ["footWidth", 0.05, 0.3, 0.005],
+          ["footDepth", 0.08, 0.4, 0.005], ["footForward", -0.1, 0.2, 0.005],
+          ["legLength", 0.08, 0.4, 0.005], ["legWidth", 0.04, 0.2, 0.005],
+          ["legDepth", 0.04, 0.2, 0.005], ["legSpread", 0.02, 0.2, 0.005],
+        ]],
+        ["torso", [
+          ["torsoHeight", 0.2, 0.55, 0.005], ["torsoWidth", 0.2, 0.6, 0.005],
+          ["torsoDepth", 0.1, 0.45, 0.005], ["panelWidth", 0, 0.4, 0.005],
+          ["panelHeight", 0, 0.3, 0.005], ["panelHeightOnTorso", 0, 1, 0.01],
+        ]],
+        ["head", [
+          ["neckHeight", 0, 0.15, 0.005], ["neckWidth", 0.04, 0.25, 0.005],
+          ["headHeight", 0.1, 0.4, 0.005], ["headWidth", 0.12, 0.45, 0.005],
+          ["headDepth", 0.1, 0.4, 0.005], ["eyeSize", 0.01, 0.12, 0.002],
+          ["eyeSpread", 0.02, 0.16, 0.002], ["eyeHeightOnHead", 0, 1, 0.01],
+        ]],
+        ["arms", [
+          ["armLength", 0.1, 0.5, 0.005], ["armWidth", 0.03, 0.18, 0.005],
+          ["armDepth", 0.03, 0.2, 0.005], ["shoulderDrop", 0, 0.2, 0.005],
+          ["armSwing", -60, 60, 1], ["armRaise", 0, 90, 1],
+        ]],
+        ["antenna", [
+          ["antennaHeight", 0, 0.35, 0.005], ["antennaWidth", 0.004, 0.05, 0.002],
+          ["antennaTip", 0, 0.1, 0.002],
+        ]],
+        ["winding key", [
+          ["keyShaft", 0, 0.2, 0.005], ["keyShaftWidth", 0.01, 0.08, 0.002],
+          ["keyBowLength", 0.02, 0.25, 0.005], ["keyBowHeight", 0.02, 0.3, 0.005],
+          ["keyBowBar", 0.008, 0.06, 0.002], ["keyBowThickness", 0.005, 0.06, 0.002],
+          ["keyHeightOnTorso", 0, 1, 0.01], ["keyTurn", -180, 180, 1],
+        ]],
+      ];
+
+      const canvas = document.querySelector("canvas");
+      const context = canvas.getContext("2d");
+      const svg = document.querySelector(".room__seams");
+      const doorImage = document.querySelector(".room__door");
+      const params = { ...robotDefaults };
+      let scene;
+
+      /* Query-string overrides, so a screenshot can pin an exact pose:
+         robot-tuner.html?facing=40&height=0.4 */
+      for (const [key, value] of new URLSearchParams(location.search))
+        if (key in params && Number.isFinite(Number(value))) params[key] = Number(value);
+
+      /* ── the room, exactly as room.js lays it out ──────────────── */
+      const pathData = (pts) =>
+        pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+
+      function layoutRoom() {
+        scene = buildScene(window.innerWidth, window.innerHeight);
+        svg.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+        for (const [name, pts] of Object.entries(scene.seams))
+          svg.querySelector(`[data-seam="${name}"]`).setAttribute("d", pathData(pts));
+        svg.style.setProperty("--seam-weight", scene.inkWeight.toFixed(2));
+        const { a, b, c, d, e, f } = scene.door.matrix;
+        doorImage.style.width = `${scene.door.natural.width}px`;
+        doorImage.style.transform = `matrix(${a},${b},${c},${d},${e},${f})`;
+
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(window.innerWidth * dpr);
+        canvas.height = Math.round(window.innerHeight * dpr);
+        context.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      /* ── construction overlay: what the geometry thinks is true ── */
+      function drawConstruction(toScreen) {
+        const at = (x, y, z) => toScreen(project({ x, y, z }));
+        const line = (a, b, dash) => {
+          context.save();
+          context.setLineDash(dash || []);
+          context.strokeStyle = "rgba(205,146,104,0.9)";
+          context.lineWidth = 1;
+          context.beginPath();
+          context.moveTo(a.x, a.y);
+          context.lineTo(b.x, b.y);
+          context.stroke();
+          context.restore();
+        };
+        // A one-metre floor grid, to check the perspective by eye.
+        for (let i = 0; i <= 8; i += 1) {
+          line(at(i, 0, 0), at(i, 0, 8), [2, 4]);
+          line(at(0, 0, i), at(8, 0, i), [2, 4]);
+        }
+        // The door's solved footprint, which must sit under the drawn door.
+        const { nearJamb, farJamb } = doorFootprint();
+        const H = ROOM_CAMERA.doorHeight;
+        context.save();
+        context.strokeStyle = "rgba(23,20,15,0.85)";
+        context.lineWidth = 2;
+        context.beginPath();
+        for (const [a, b] of [
+          [at(nearJamb, 0, 0), at(nearJamb, H, 0)], [at(farJamb, 0, 0), at(farJamb, H, 0)],
+          [at(nearJamb, H, 0), at(farJamb, H, 0)], [at(nearJamb, 0, 0), at(farJamb, 0, 0)],
+        ]) { context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); }
+        context.stroke();
+        context.restore();
+        // Where the robot's feet are told to be.
+        const feet = at(params.standX, 0, params.standZ);
+        context.save();
+        context.fillStyle = "rgba(205,146,104,1)";
+        context.beginPath();
+        context.arc(feet.x, feet.y, 4, 0, Math.PI * 2);
+        context.fill();
+        context.restore();
+      }
+
+      /* ── wireframe, for checking the model rather than the picture ── */
+      function drawWire(quads, toScreen) {
+        context.save();
+        context.strokeStyle = "rgba(23,20,15,0.5)";
+        context.lineWidth = 1;
+        context.beginPath();
+        for (const quad of quads.flatMap((s) => s.quads)) {
+          const pts = quad.points.map((p) => toScreen(project(p)));
+          pts.forEach((p, i) => (i ? context.lineTo(p.x, p.y) : context.moveTo(p.x, p.y)));
+          context.closePath();
+        }
+        context.stroke();
+        context.restore();
+      }
+
+      function render() {
+        context.clearRect(0, 0, window.innerWidth, window.innerHeight);
+        const toScreen = mockupToScreen(scene);
+        const robot = buildRobot(params);
+        const quads = placeRobot(robot);
+
+        if (document.getElementById("marks").checked) drawConstruction(toScreen);
+        if (document.getElementById("wire").checked) drawWire(quads, toScreen);
+        else drawRobot(context, quads, toScreen, { weight: Math.max(1, scene.scale * 1.35) });
+
+        let top = Infinity, bottom = -Infinity;
+        for (const q of quads.flatMap((s) => s.quads)) for (const p of q.points) {
+          const s = toScreen(project(p));
+          top = Math.min(top, s.y); bottom = Math.max(bottom, s.y);
+        }
+        const doorPx = scene.door.natural.height * Math.hypot(scene.door.matrix.a, scene.door.matrix.b);
+        document.getElementById("readout").textContent =
+          `${(bottom - top).toFixed(0)}px tall on screen · ${((bottom - top) / doorPx * 100).toFixed(0)}% of the door`;
+        document.getElementById("dump").value = JSON.stringify(params, null, 2);
+      }
+
+      /* ── panel ─────────────────────────────────────────────────── */
+      const host = document.getElementById("sliders");
+      const inputs = new Map();
+      for (const [title, entries] of GROUPS) {
+        host.insertAdjacentHTML("beforeend", `<h2>${title}</h2>`);
+        for (const [key, min, max, step] of entries) {
+          const row = document.createElement("div");
+          row.className = "row";
+          row.innerHTML = `<label for="p-${key}">${key}</label>
+            <input type="range" id="p-${key}" min="${min}" max="${max}" step="${step}" value="${params[key]}" />
+            <output>${params[key]}</output>`;
+          host.append(row);
+          const input = row.querySelector("input");
+          const out = row.querySelector("output");
+          input.addEventListener("input", () => {
+            params[key] = Number(input.value);
+            out.textContent = input.value;
+            render();
+          });
+          inputs.set(key, { input, out });
+        }
+      }
+
+      document.getElementById("reset").addEventListener("click", () => {
+        Object.assign(params, robotDefaults);
+        for (const [key, { input, out }] of inputs) {
+          input.value = params[key];
+          out.textContent = params[key];
+        }
+        render();
+      });
+      document.getElementById("copy").addEventListener("click", () => {
+        navigator.clipboard?.writeText(JSON.stringify(params, null, 2));
+      });
+      for (const id of ["wire", "marks"])
+        document.getElementById(id).addEventListener("change", render);
+
+      /* ── spinning it ───────────────────────────────────────────
+       *
+       * Yaw only. The room's camera is fixed and recovered from the door art,
+       * so orbiting it would mean the robot no longer stands in the room the
+       * mockup was drawn in. Turning the robot on the spot is the axis that
+       * actually matters here anyway.
+       */
+      const setParam = (key, value) => {
+        params[key] = value;
+        const entry = inputs.get(key);
+        if (!entry) return;
+        entry.input.value = value;
+        entry.out.textContent = Number(value.toFixed(3));
+      };
+      const wrap = (deg) => ((((deg + 180) % 360) + 360) % 360) - 180;
+
+      let spinning = 0;
+      const turntable = document.getElementById("spin");
+      turntable.addEventListener("change", () => {
+        cancelAnimationFrame(spinning);
+        if (!turntable.checked) return;
+        let last = performance.now();
+        const step = (now) => {
+          setParam("facing", wrap(params.facing + ((now - last) / 1000) * 45));
+          last = now;
+          render();
+          spinning = requestAnimationFrame(step);
+        };
+        spinning = requestAnimationFrame(step);
+      });
+
+      let drag = null;
+      canvas.addEventListener("pointerdown", (event) => {
+        turntable.checked = false;
+        cancelAnimationFrame(spinning);
+        drag = {
+          id: event.pointerId,
+          x: event.clientX,
+          y: event.clientY,
+          facing: params.facing,
+          standX: params.standX,
+          standZ: params.standZ,
+          walk: event.shiftKey,
+        };
+        canvas.setPointerCapture(event.pointerId);
+        canvas.classList.add("dragging");
+      });
+      canvas.addEventListener("pointermove", (event) => {
+        if (!drag || event.pointerId !== drag.id) return;
+        const dx = event.clientX - drag.x;
+        const dy = event.clientY - drag.y;
+        if (drag.walk) {
+          // Screen-right is roughly the right wall's axis, screen-down is depth.
+          setParam("standX", Math.max(0, drag.standX + dx * 0.012));
+          setParam("standZ", Math.max(0, drag.standZ + dy * 0.012));
+        } else {
+          setParam("facing", wrap(drag.facing + dx * 0.6));
+        }
+        render();
+      });
+      for (const type of ["pointerup", "pointercancel"])
+        canvas.addEventListener(type, () => {
+          drag = null;
+          canvas.classList.remove("dragging");
+        });
+
+      window.addEventListener("keydown", (event) => {
+        if (event.target.tagName === "INPUT") return;
+        const nudge = { ArrowLeft: -5, ArrowRight: 5 }[event.key];
+        if (nudge === undefined) return;
+        event.preventDefault();
+        turntable.checked = false;
+        cancelAnimationFrame(spinning);
+        setParam("facing", wrap(params.facing + nudge));
+        render();
+      });
+
+      window.addEventListener("resize", () => { layoutRoom(); render(); });
+      layoutRoom();
+      render();
+      window.robot = { params, render };
+    </script>
+  </body>
+</html>
