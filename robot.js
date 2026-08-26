@@ -122,8 +122,8 @@ export const robotPresets = {
   /* Tin-toy proportions, but the face is a little screen. The head grows a
    * touch to give the screen somewhere to live without crowding it. */
   bmo: {
-    headHeight: 0.25, headWidth: 0.34, headDepth: 0.28,
-    neckHeight: 0.045, antennaHeight: 0.13,
+    headHeight: 0.25, headWidth: 0.34, headDepth: 0.23,
+    neckHeight: 0, antennaHeight: 0.13,
     screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
   },
 
@@ -457,13 +457,15 @@ export function buildRobot(params = {}) {
   )));
 
   /* Neck, head, eyes. */
-  add(
-    "neck",
-    box(
-      { x: 0, y: (shoulderLine + chin) / 2, z: 0 },
-      { x: p.neckWidth, y: p.neckHeight, z: p.neckWidth },
-    ),
-  );
+  if (p.neckHeight > 1e-6) {
+    add(
+      "neck",
+      box(
+        { x: 0, y: (shoulderLine + chin) / 2, z: 0 },
+        { x: p.neckWidth, y: p.neckHeight, z: p.neckWidth },
+      ),
+    );
+  }
   /* Head. `headDome` is the fraction of its height given over to a rounded
    * top; at 0 the rings collapse to two and it is exactly the box it was.
    * Markings sit on the flat part of the face, so their coordinates are
