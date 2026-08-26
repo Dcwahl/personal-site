@@ -49,6 +49,19 @@ export const robotDefaults = {
   eyeSize: 0.05,
   eyeSpread: 0.072,
   eyeHeightOnHead: 0.58,
+  /* Screen face. `screenWidth` at 0 keeps the plain square eyes. */
+  screenWidth: 0, // fraction of the head's front face
+  screenHeight: 0.62,
+  screenY: 0.52, // height up the face
+  screenRadius: 0.09,
+  screenEyeSpread: 0.44, // fraction of the screen's width
+  screenEyeRadius: 0.052,
+  screenEyeRise: 0.06,
+  screenMouthWidth: 0.34,
+  screenMouthDrop: 0.14,
+  screenMouthDepth: 0.05,
+  expression: "happy", // happy | neutral | blink | surprised
+
   headChamfer: 0, // 0 = square corners; raises to cut them off
   headDome: 0, // fraction of the head's height given to a rounded top
   headDomeSegments: 5,
@@ -105,6 +118,14 @@ export const robotPresets = {
   },
 
   chamfered: { torsoChamfer: 0.3, headChamfer: 0.3 },
+
+  /* Tin-toy proportions, but the face is a little screen. The head grows a
+   * touch to give the screen somewhere to live without crowding it. */
+  bmo: {
+    headHeight: 0.25, headWidth: 0.34, headDepth: 0.28,
+    neckHeight: 0.045, antennaHeight: 0.13,
+    screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
+  },
 
   domed: { headDome: 0.45, headChamfer: 0.15 },
 
@@ -257,8 +278,59 @@ function section(halfX, halfZ, chamfer = 0) {
 /** Scale a section about the axis, for the shrinking rings of a dome. */
 const scaled = (points, factor) => points.map((p) => ({ x: p.x * factor, z: p.z * factor }));
 
-/** A centred rectangle in face (u, v) space, sized as a fraction of the face. */
-const patch = (u, v, du, dv) => [u - du / 2, v - dv / 2, u + du / 2, v + dv / 2];
+/**
+ * Surface markings, in a face's own (u, v).
+ *
+ * Each is a polyline: closed and stroked by default, optionally filled with
+ * ink, optionally left open (a mouth curve is not a closed shape). Faces are
+ * rarely square, so anything meant to read as round takes the face's aspect
+ * and works in fractions of *height* for both axes.
+ */
+const patch = (u, v, du, dv) => ({
+  points: [
+    [u - du / 2, v - dv / 2], [u + du / 2, v - dv / 2],
+    [u + du / 2, v + dv / 2], [u - du / 2, v + dv / 2],
+  ],
+});
+
+/** A rectangle with its corners rounded off — the screen's bezel. */
+function roundPatch(u, v, du, dv, radius, steps = 5) {
+  const rx = Math.min(radius, du / 2);
+  const ry = Math.min(radius, dv / 2);
+  const points = [];
+  const corners = [
+    [u + du / 2 - rx, v + dv / 2 - ry, 0],
+    [u - du / 2 + rx, v + dv / 2 - ry, Math.PI / 2],
+    [u - du / 2 + rx, v - dv / 2 + ry, Math.PI],
+    [u + du / 2 - rx, v - dv / 2 + ry, (3 * Math.PI) / 2],
+  ];
+  for (const [cu, cv, start] of corners)
+    for (let i = 0; i <= steps; i += 1) {
+      const a = start + (i / steps) * (Math.PI / 2);
+      points.push([cu + rx * Math.cos(a), cv + ry * Math.sin(a)]);
+    }
+  return { points };
+}
+
+/** A filled dot. `aspect` is the face's width/height, keeping it circular. */
+function disc(u, v, radius, aspect, steps = 14) {
+  const points = [];
+  for (let i = 0; i < steps; i += 1) {
+    const a = (i / steps) * Math.PI * 2;
+    points.push([u + (radius / aspect) * Math.cos(a), v + radius * Math.sin(a)]);
+  }
+  return { points, fill: "ink" };
+}
+
+/** An open parabola: ends up for a smile, ends down for a frown. */
+function curve(u, v, width, depth, aspect, steps = 12) {
+  const points = [];
+  for (let i = 0; i <= steps; i += 1) {
+    const t = (i / steps) * 2 - 1;
+    points.push([u + (t * width) / 2 / aspect, v + depth * t * t]);
+  }
+  return { points, open: true };
+}
 
 /** Rotate about the z axis — the shoulder hinge, and the key's turn. */
 function hinge(quads, pivot, degrees) {
@@ -311,7 +383,10 @@ const mirrorZ = (quads) =>
     normal: { ...q.normal, z: -q.normal.z },
     points: q.points.map((p) => ({ ...p, z: -p.z })),
     // Mirroring flips the face's u axis, so its markings must flip with it.
-    detail: q.detail.map(([u0, v0, u1, v1]) => [1 - u1, v0, 1 - u0, v1]),
+    detail: q.detail.map((mark) => ({
+      ...mark,
+      points: mark.points.map(([u, v]) => [1 - u, v]),
+    })),
   }));
 
 /* ── the body ─────────────────────────────────────────────────────── */
@@ -408,15 +483,55 @@ export function buildRobot(params = {}) {
       points: scaled(section(...headHalf, p.headChamfer), Math.cos(t)),
     });
   }
+  /* A BMO-style screen face, when `screenWidth` is turned up. At 0 the head
+   * keeps its two plain square eyes and nothing below runs. Faces are wider
+   * than they are tall, so anything meant to read as round is given the
+   * face's aspect to work against. */
+  const faceAspect = headFront / (p.headHeight - domeHeight);
+  const screenMarks = () => {
+    const marks = [roundPatch(0.5, p.screenY, p.screenWidth, p.screenHeight, p.screenRadius)];
+    const eyeU2 = (p.screenWidth * p.screenEyeSpread) / 2;
+    const eyeV = p.screenY + p.screenEyeRise;
+    const mouthV = p.screenY - p.screenMouthDrop;
+    const mouth = (depth) =>
+      curve(0.5, mouthV, p.screenWidth * p.screenMouthWidth, depth, faceAspect);
+
+    switch (p.expression) {
+      case "blink":
+        for (const side of [-1, 1])
+          marks.push(patch(0.5 + side * eyeU2, eyeV, p.screenEyeRadius * 2.4 / faceAspect, p.screenEyeRadius * 0.5));
+        marks.push(mouth(p.screenMouthDepth));
+        break;
+      case "surprised":
+        for (const side of [-1, 1])
+          marks.push(disc(0.5 + side * eyeU2, eyeV, p.screenEyeRadius * 1.5, faceAspect));
+        marks.push({ ...disc(0.5, mouthV, p.screenEyeRadius * 1.2, faceAspect), fill: undefined });
+        break;
+      case "neutral":
+        for (const side of [-1, 1])
+          marks.push(disc(0.5 + side * eyeU2, eyeV, p.screenEyeRadius, faceAspect));
+        marks.push(mouth(0.004));
+        break;
+      default: // happy
+        for (const side of [-1, 1])
+          marks.push(disc(0.5 + side * eyeU2, eyeV, p.screenEyeRadius, faceAspect));
+        marks.push(mouth(p.screenMouthDepth));
+    }
+    return marks;
+  };
+
   const eyeU = p.eyeSpread / headFront;
   const eyeSize = [p.eyeSize / headFront, p.eyeSize / (p.headHeight - domeHeight)];
   add(
     "head",
     lathe(headRings, {
-      front: [
-        patch(0.5 - eyeU, p.eyeHeightOnHead, ...eyeSize),
-        patch(0.5 + eyeU, p.eyeHeightOnHead, ...eyeSize),
-      ],
+      front:
+        p.screenWidth > 0
+          ? screenMarks()
+          : [
+              patch(0.5 - eyeU, p.eyeHeightOnHead, ...eyeSize),
+              patch(0.5 + eyeU, p.eyeHeightOnHead, ...eyeSize),
+            ],
     }),
   );
 
@@ -684,18 +799,26 @@ export function drawRobot(context, solids, toScreen, style = {}) {
       /* Surface markings, in the face's own (u, v). Interpolating in 3D and
        * projecting afterwards keeps them in perspective — the face is planar,
        * so bilinear interpolation lands exactly in its plane. */
-      for (const [u0, v0, u1, v1] of face.detail) {
-        const [a, b, c, d] = face.points;
-        const at = (u, v) => {
-          const top = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u };
-          const bottom = { x: d.x + (c.x - d.x) * u, y: d.y + (c.y - d.y) * u, z: d.z + (c.z - d.z) * u };
-          return toScreen(projectCameraSpace(toCameraSpace({
-            x: top.x + (bottom.x - top.x) * v,
-            y: top.y + (bottom.y - top.y) * v,
-            z: top.z + (bottom.z - top.z) * v,
-          })));
-        };
-        trace([at(u0, v0), at(u1, v0), at(u1, v1), at(u0, v1)]);
+      const [a, b, c, d] = face.points;
+      const at = (u, v) => {
+        const top = { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, z: a.z + (b.z - a.z) * u };
+        const bottom = { x: d.x + (c.x - d.x) * u, y: d.y + (c.y - d.y) * u, z: d.z + (c.z - d.z) * u };
+        return toScreen(projectCameraSpace(toCameraSpace({
+          x: top.x + (bottom.x - top.x) * v,
+          y: top.y + (bottom.y - top.y) * v,
+          z: top.z + (bottom.z - top.z) * v,
+        })));
+      };
+      for (const mark of face.detail) {
+        const points = mark.points.map(([u, v]) => at(u, v));
+        context.beginPath();
+        points.forEach((q, i) => (i ? context.lineTo(q.x, q.y) : context.moveTo(q.x, q.y)));
+        if (!mark.open) context.closePath();
+        if (mark.fill === "ink") {
+          context.fillStyle = ink;
+          context.fill();
+          context.fillStyle = paper;
+        }
         context.stroke();
       }
     }

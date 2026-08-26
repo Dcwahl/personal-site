@@ -72,6 +72,7 @@
     <aside class="panel">
       <div class="actions">
         <select id="preset" title="named variants"></select>
+        <select id="expression" title="face expression"></select>
       </div>
       <div class="actions">
         <button id="reset">reset</button>
@@ -130,6 +131,13 @@
           ["antennaHeight", 0, 0.35, 0.005], ["antennaWidth", 0.004, 0.05, 0.002],
           ["antennaTip", 0, 0.1, 0.002],
         ]],
+        ["screen face", [
+          ["screenWidth", 0, 0.95, 0.01], ["screenHeight", 0.1, 0.95, 0.01],
+          ["screenY", 0, 1, 0.01], ["screenRadius", 0, 0.3, 0.005],
+          ["screenEyeSpread", 0, 1, 0.01], ["screenEyeRadius", 0.01, 0.15, 0.002],
+          ["screenEyeRise", -0.2, 0.3, 0.005], ["screenMouthWidth", 0, 1, 0.01],
+          ["screenMouthDrop", -0.1, 0.4, 0.005], ["screenMouthDepth", 0, 0.2, 0.005],
+        ]],
         ["winding key", [
           ["keyShaft", 0, 0.2, 0.005], ["keyShaftWidth", 0.01, 0.08, 0.002],
           ["keyBowLength", 0.02, 0.25, 0.005], ["keyBowHeight", 0.02, 0.3, 0.005],
@@ -149,8 +157,11 @@
          robot-tuner.html?facing=40&height=0.4 */
       const query = new URLSearchParams(location.search);
       if (robotPresets[query.get("preset")]) Object.assign(params, robotPresets[query.get("preset")]);
-      for (const [key, value] of query)
-        if (key in params && Number.isFinite(Number(value))) params[key] = Number(value);
+      for (const [key, value] of query) {
+        if (!(key in params)) continue;
+        if (typeof params[key] === "string") params[key] = value;
+        else if (Number.isFinite(Number(value))) params[key] = Number(value);
+      }
 
       /* ── the room, exactly as room.js lays it out ──────────────── */
       const pathData = (pts) =>
@@ -294,9 +305,23 @@
         option.textContent = name;
         presets.append(option);
       }
+      const expressions = document.getElementById("expression");
+      for (const name of ["happy", "neutral", "blink", "surprised"]) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        expressions.append(option);
+      }
+      expressions.value = params.expression;
+      expressions.addEventListener("change", () => {
+        params.expression = expressions.value;
+        render();
+      });
+
       presets.addEventListener("change", () => {
         const keep = { standX: params.standX, standZ: params.standZ, facing: params.facing };
         Object.assign(params, robotDefaults, robotPresets[presets.value], keep);
+        expressions.value = params.expression;
         syncPanel();
         render();
       });
