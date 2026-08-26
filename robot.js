@@ -37,7 +37,8 @@ export const robotDefaults = {
   torsoDepth: 0.28,
   panelWidth: 0.2,
   panelHeight: 0.13,
-  panelHeightOnTorso: 0.42, // fraction up the torso
+  panelHeightOnTorso: 0.42,
+  torsoChamfer: 0, // 0 = square corners // fraction up the torso
 
   /* Head ──────────────────────────────────────────────────────────── */
   neckHeight: 0.055,
@@ -48,6 +49,9 @@ export const robotDefaults = {
   eyeSize: 0.05,
   eyeSpread: 0.072,
   eyeHeightOnHead: 0.58,
+  headChamfer: 0, // 0 = square corners; raises to cut them off
+  headDome: 0, // fraction of the head's height given to a rounded top
+  headDomeSegments: 5,
 
   /* Arms ──────────────────────────────────────────────────────────── */
   armLength: 0.265,
@@ -71,6 +75,53 @@ export const robotDefaults = {
   keyBowThickness: 0.02,
   keyHeightOnTorso: 0.22,
   keyTurn: 0, // degrees about the shaft; the walk will drive this
+};
+
+/**
+ * Named variants.
+ *
+ * Each is a partial override of `robotDefaults`, so a direction we try is kept
+ * as an option rather than replacing the last one — nothing has to be deleted
+ * to explore, and the original is always one selection away. New shape
+ * parameters all default to zero for exactly this reason: at zero they
+ * reproduce the plain box.
+ */
+export const robotPresets = {
+  "tin toy": {},
+
+  /* Baby schema: the oversized head, low wide eyes, stubby limbs and big feet
+   * that read as cute. Proportion alone, no new geometry. */
+  baby: {
+    footHeight: 0.07, footWidth: 0.2, footDepth: 0.26,
+    legLength: 0.15, legWidth: 0.15, legDepth: 0.14, legSpread: 0.115,
+    torsoHeight: 0.28, torsoWidth: 0.44, torsoDepth: 0.31,
+    neckHeight: 0.02, neckWidth: 0.13,
+    headHeight: 0.34, headWidth: 0.4, headDepth: 0.35,
+    eyeSize: 0.085, eyeSpread: 0.1, eyeHeightOnHead: 0.42,
+    armLength: 0.2, armWidth: 0.09, armDepth: 0.095, armRaise: 38,
+    antennaHeight: 0.1, antennaTip: 0.05,
+    panelWidth: 0.2, panelHeight: 0.1, panelHeightOnTorso: 0.45,
+    keyHeightOnTorso: 0.3, keyShaft: 0.08, keyBowLength: 0.09, keyBowHeight: 0.11,
+  },
+
+  chamfered: { torsoChamfer: 0.3, headChamfer: 0.3 },
+
+  domed: { headDome: 0.45, headChamfer: 0.15 },
+
+  /* All three of the directions at once. */
+  soft: {
+    footHeight: 0.07, footWidth: 0.2, footDepth: 0.26,
+    legLength: 0.15, legWidth: 0.15, legDepth: 0.14, legSpread: 0.115,
+    torsoHeight: 0.28, torsoWidth: 0.44, torsoDepth: 0.31,
+    neckHeight: 0.02, neckWidth: 0.13,
+    headHeight: 0.34, headWidth: 0.4, headDepth: 0.35,
+    eyeSize: 0.085, eyeSpread: 0.1, eyeHeightOnHead: 0.42,
+    armLength: 0.2, armWidth: 0.09, armDepth: 0.095, armRaise: 38,
+    antennaHeight: 0.1, antennaTip: 0.05,
+    panelWidth: 0.2, panelHeight: 0.1, panelHeightOnTorso: 0.45,
+    keyHeightOnTorso: 0.3, keyShaft: 0.08, keyBowLength: 0.09, keyBowHeight: 0.11,
+    torsoChamfer: 0.28, headChamfer: 0.22, headDome: 0.4,
+  },
 };
 
 /* ── geometry primitives ──────────────────────────────────────────── */
@@ -113,6 +164,98 @@ function box(centre, size, details = {}) {
     face("-z", { x: 0, y: 0, z: -1 }, 0, 2, 6, 4),
   ];
 }
+
+/**
+ * A solid built from stacked horizontal rings.
+ *
+ * Generalises the box so a shape can be softened without abandoning flat
+ * faces: chamfering is just an eight-point ring instead of a four-point one,
+ * and a dome is a stack of shrinking rings. Culling stays exact either way,
+ * because every face is still planar and convex.
+ *
+ * Normals are derived per face and then turned outward against the solid's own
+ * centre, which keeps them right without depending on winding handedness.
+ */
+function lathe(rings, details = {}) {
+  const all = rings.flatMap((ring) => ring.points.map((p) => ({ ...p, y: ring.y })));
+  const centre = all.reduce(
+    (a, p) => ({ x: a.x + p.x / all.length, y: a.y + p.y / all.length, z: a.z + p.z / all.length }),
+    { x: 0, y: 0, z: 0 },
+  );
+
+  const outward = (points) => {
+    const [a, b, c] = points;
+    const u = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z };
+    const v = { x: c.x - a.x, y: c.y - a.y, z: c.z - a.z };
+    let n = {
+      x: u.y * v.z - u.z * v.y,
+      y: u.z * v.x - u.x * v.z,
+      z: u.x * v.y - u.y * v.x,
+    };
+    const length = Math.hypot(n.x, n.y, n.z) || 1;
+    n = { x: n.x / length, y: n.y / length, z: n.z / length };
+    const mid = points.reduce(
+      (a2, p) => ({ x: a2.x + p.x / points.length, y: a2.y + p.y / points.length, z: a2.z + p.z / points.length }),
+      { x: 0, y: 0, z: 0 },
+    );
+    const away = (mid.x - centre.x) * n.x + (mid.y - centre.y) * n.y + (mid.z - centre.z) * n.z;
+    return away < 0 ? { x: -n.x, y: -n.y, z: -n.z } : n;
+  };
+
+  const quads = [];
+  const at = (ring, i) => ({ x: ring.points[i].x, y: ring.y, z: ring.points[i].z });
+
+  for (let r = 0; r < rings.length - 1; r += 1) {
+    const [low, high] = [rings[r], rings[r + 1]];
+    const n = low.points.length;
+    for (let i = 0; i < n; i += 1) {
+      const j = (i + 1) % n;
+      const points = [at(low, i), at(low, j), at(high, j), at(high, i)];
+      quads.push({ normal: outward(points), points, detail: [] });
+    }
+  }
+
+  /* Caps. A ring collapsed to a point (the top of a dome) needs none. */
+  for (const [ring, flip] of [[rings[0], true], [rings[rings.length - 1], false]]) {
+    const spread = Math.max(...ring.points.map((p) => Math.hypot(p.x, p.z)));
+    if (spread < 1e-6) continue;
+    const points = ring.points.map((_, i) => at(ring, flip ? ring.points.length - 1 - i : i));
+    quads.push({ normal: outward(points), points, detail: [] });
+  }
+
+  /* Markings go on whichever side face looks most directly forward. */
+  if (details.front?.length) {
+    let best = null;
+    for (const quad of quads) if (!best || quad.normal.x > best.normal.x) best = quad;
+    if (best) best.detail = details.front;
+  }
+
+  return quads;
+}
+
+/** How much each corner loses to a chamfer, in world units. */
+const cornerCut = (halfX, halfZ, chamfer) =>
+  Math.min(chamfer, 0.49) * Math.min(halfX, halfZ) * 2;
+
+/** Horizontal cross-section: a rectangle with its corners optionally cut off. */
+function section(halfX, halfZ, chamfer = 0) {
+  const cut = cornerCut(halfX, halfZ, chamfer);
+  if (cut <= 1e-6) {
+    return [
+      { x: halfX, z: -halfZ }, { x: halfX, z: halfZ },
+      { x: -halfX, z: halfZ }, { x: -halfX, z: -halfZ },
+    ];
+  }
+  return [
+    { x: halfX, z: -halfZ + cut }, { x: halfX, z: halfZ - cut },
+    { x: halfX - cut, z: halfZ }, { x: -halfX + cut, z: halfZ },
+    { x: -halfX, z: halfZ - cut }, { x: -halfX, z: -halfZ + cut },
+    { x: -halfX + cut, z: -halfZ }, { x: halfX - cut, z: -halfZ },
+  ];
+}
+
+/** Scale a section about the axis, for the shrinking rings of a dome. */
+const scaled = (points, factor) => points.map((p) => ({ x: p.x * factor, z: p.z * factor }));
 
 /** A centred rectangle in face (u, v) space, sized as a fraction of the face. */
 const patch = (u, v, du, dv) => [u - du / 2, v - dv / 2, u + du / 2, v + dv / 2];
@@ -200,14 +343,19 @@ export function buildRobot(params = {}) {
   add("leg.right", mirrorZ(leg));
 
   /* Torso. The chest panel is a marking on the front face, not a proud box. */
+  // Chamfering narrows the front face, so the panel is sized against the face
+  // it actually sits on rather than against the torso's full width.
+  const torsoFront = p.torsoWidth - 2 * cornerCut(p.torsoDepth / 2, p.torsoWidth / 2, p.torsoChamfer);
   add(
     "torso",
-    box(
-      { x: 0, y: (hip + shoulderLine) / 2, z: 0 },
-      { x: p.torsoDepth, y: p.torsoHeight, z: p.torsoWidth },
+    lathe(
+      [
+        { y: hip, points: section(p.torsoDepth / 2, p.torsoWidth / 2, p.torsoChamfer) },
+        { y: shoulderLine, points: section(p.torsoDepth / 2, p.torsoWidth / 2, p.torsoChamfer) },
+      ],
       {
-        "+x": [
-          patch(0.5, p.panelHeightOnTorso, p.panelWidth / p.torsoWidth, p.panelHeight / p.torsoHeight),
+        front: [
+          patch(0.5, p.panelHeightOnTorso, p.panelWidth / torsoFront, p.panelHeight / p.torsoHeight),
         ],
       },
     ),
@@ -241,20 +389,35 @@ export function buildRobot(params = {}) {
       { x: p.neckWidth, y: p.neckHeight, z: p.neckWidth },
     ),
   );
-  const eyeU = p.eyeSpread / p.headWidth;
-  const eyeSize = [p.eyeSize / p.headWidth, p.eyeSize / p.headHeight];
+  /* Head. `headDome` is the fraction of its height given over to a rounded
+   * top; at 0 the rings collapse to two and it is exactly the box it was.
+   * Markings sit on the flat part of the face, so their coordinates are
+   * relative to that, not to the whole head. */
+  const headHalf = [p.headDepth / 2, p.headWidth / 2];
+  const headFront = p.headWidth - 2 * cornerCut(...headHalf, p.headChamfer);
+  const domeHeight = p.headDome * p.headHeight;
+  const domeBase = crown - domeHeight;
+  const headRings = [
+    { y: chin, points: section(...headHalf, p.headChamfer) },
+    { y: domeBase, points: section(...headHalf, p.headChamfer) },
+  ];
+  for (let k = 1; k <= (domeHeight > 1e-6 ? Math.round(p.headDomeSegments) : 0); k += 1) {
+    const t = (k / Math.round(p.headDomeSegments)) * (Math.PI / 2);
+    headRings.push({
+      y: domeBase + domeHeight * Math.sin(t),
+      points: scaled(section(...headHalf, p.headChamfer), Math.cos(t)),
+    });
+  }
+  const eyeU = p.eyeSpread / headFront;
+  const eyeSize = [p.eyeSize / headFront, p.eyeSize / (p.headHeight - domeHeight)];
   add(
     "head",
-    box(
-      { x: 0, y: (chin + crown) / 2, z: 0 },
-      { x: p.headDepth, y: p.headHeight, z: p.headWidth },
-      {
-        "+x": [
-          patch(0.5 - eyeU, p.eyeHeightOnHead, ...eyeSize),
-          patch(0.5 + eyeU, p.eyeHeightOnHead, ...eyeSize),
-        ],
-      },
-    ),
+    lathe(headRings, {
+      front: [
+        patch(0.5 - eyeU, p.eyeHeightOnHead, ...eyeSize),
+        patch(0.5 + eyeU, p.eyeHeightOnHead, ...eyeSize),
+      ],
+    }),
   );
 
   /* Antenna. */

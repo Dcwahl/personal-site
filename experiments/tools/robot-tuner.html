@@ -71,6 +71,9 @@
 
     <aside class="panel">
       <div class="actions">
+        <select id="preset" title="named variants"></select>
+      </div>
+      <div class="actions">
         <button id="reset">reset</button>
         <button id="copy">copy params</button>
       </div>
@@ -87,7 +90,7 @@
 
     <script type="module">
       import { buildScene } from "../../scene.js";
-      import { buildRobot, placeRobot, drawRobot, robotDefaults } from "../../robot.js";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
@@ -106,7 +109,8 @@
         ]],
         ["torso", [
           ["torsoHeight", 0.2, 0.55, 0.005], ["torsoWidth", 0.2, 0.6, 0.005],
-          ["torsoDepth", 0.1, 0.45, 0.005], ["panelWidth", 0, 0.4, 0.005],
+          ["torsoDepth", 0.1, 0.45, 0.005], ["torsoChamfer", 0, 0.45, 0.01],
+          ["panelWidth", 0, 0.4, 0.005],
           ["panelHeight", 0, 0.3, 0.005], ["panelHeightOnTorso", 0, 1, 0.01],
         ]],
         ["head", [
@@ -114,6 +118,8 @@
           ["headHeight", 0.1, 0.4, 0.005], ["headWidth", 0.12, 0.45, 0.005],
           ["headDepth", 0.1, 0.4, 0.005], ["eyeSize", 0.01, 0.12, 0.002],
           ["eyeSpread", 0.02, 0.16, 0.002], ["eyeHeightOnHead", 0, 1, 0.01],
+          ["headChamfer", 0, 0.45, 0.01], ["headDome", 0, 0.8, 0.01],
+          ["headDomeSegments", 2, 10, 1],
         ]],
         ["arms", [
           ["armLength", 0.1, 0.5, 0.005], ["armWidth", 0.03, 0.18, 0.005],
@@ -141,7 +147,9 @@
 
       /* Query-string overrides, so a screenshot can pin an exact pose:
          robot-tuner.html?facing=40&height=0.4 */
-      for (const [key, value] of new URLSearchParams(location.search))
+      const query = new URLSearchParams(location.search);
+      if (robotPresets[query.get("preset")]) Object.assign(params, robotPresets[query.get("preset")]);
+      for (const [key, value] of query)
         if (key in params && Number.isFinite(Number(value))) params[key] = Number(value);
 
       /* ── the room, exactly as room.js lays it out ──────────────── */
@@ -265,12 +273,31 @@
         }
       }
 
-      document.getElementById("reset").addEventListener("click", () => {
-        Object.assign(params, robotDefaults);
+      const syncPanel = () => {
         for (const [key, { input, out }] of inputs) {
           input.value = params[key];
           out.textContent = params[key];
         }
+      };
+      document.getElementById("reset").addEventListener("click", () => {
+        Object.assign(params, robotDefaults);
+        syncPanel();
+        render();
+      });
+
+      /* Variants are presets, not replacements: switching is non-destructive
+         and the original is always one selection away. */
+      const presets = document.getElementById("preset");
+      for (const name of Object.keys(robotPresets)) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        presets.append(option);
+      }
+      presets.addEventListener("change", () => {
+        const keep = { standX: params.standX, standZ: params.standZ, facing: params.facing };
+        Object.assign(params, robotDefaults, robotPresets[presets.value], keep);
+        syncPanel();
         render();
       });
       document.getElementById("copy").addEventListener("click", () => {
