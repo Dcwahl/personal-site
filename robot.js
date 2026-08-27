@@ -106,6 +106,14 @@ export const robotDefaults = {
  * parameters all default to zero for exactly this reason: at zero they
  * reproduce the plain box.
  */
+/** The body every walking variant shares. */
+const WALK_BODY = {
+  headHeight: 0.25, headWidth: 0.34, headDepth: 0.23,
+  neckHeight: 0, antennaHeight: 0.13,
+  screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
+  legLength: 0.13, stepAngle: 27.5, rockAngle: 20, cadence: 1.2, phase: 0.25,
+};
+
 export const robotPresets = {
   "tin toy": {},
 
@@ -126,14 +134,18 @@ export const robotPresets = {
 
   chamfered: { torsoChamfer: 0.3, headChamfer: 0.3 },
 
+  /* Four ways to spend less than a minute walking across the room. Each
+   * spreads the change over cadence, size and stride rather than pushing any
+   * one of them somewhere ugly. Pair with the matching routeReach in the
+   * tuner. */
+  "A scurry": { ...WALK_BODY, cadence: 4.5 },
+  "B bigger toy": { ...WALK_BODY, cadence: 3.5, height: 0.45 },
+  "C longer legs": { ...WALK_BODY, cadence: 3.5, legLength: 0.22 },
+  "D mild": { ...WALK_BODY, cadence: 3.2, height: 0.4, legLength: 0.17 },
+
   /* The bmo body, mid-stride. Selecting this and pressing play is the quickest
    * way to see what the gait actually looks like. */
-  walk: {
-    headHeight: 0.25, headWidth: 0.34, headDepth: 0.23,
-    neckHeight: 0, antennaHeight: 0.13,
-    screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
-    legLength: 0.13, stepAngle: 27.5, rockAngle: 9.5, cadence: 1.2, phase: 0.25,
-  },
+  walk: { ...WALK_BODY },
 
   /* Tin-toy proportions, but the face is a little screen. The head grows a
    * touch to give the screen somewhere to live without crowding it. */

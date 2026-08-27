@@ -21,15 +21,23 @@ import { doorFootprint } from "./camera.js";
  * therefore perpendicular to their walls: the first pushes straight out along
  * z, the second brings it in facing the room rather than the corner.
  */
-export function doorRoute() {
+export function doorRoute(reach = 1) {
   const { nearJamb, farJamb } = doorFootprint();
   const threshold = (nearJamb + farJamb) / 2;
 
+  /* `reach` slides the destination back toward the doorway. A small toy with
+   * short legs genuinely needs a lot of steps to cross a whole room, so how
+   * far it walks is one of the few honest ways to spend less time doing it. */
+  const to = {
+    x: threshold + (4.6 - threshold) * reach,
+    z: 3.55 * reach,
+  };
+
   return {
     from: { x: threshold, z: 0 },
-    control1: { x: threshold, z: 1.35 },
-    control2: { x: 4.15, z: 2.75 },
-    to: { x: 4.6, z: 3.55 },
+    control1: { x: threshold, z: Math.max(0.5, 1.35 * reach) },
+    control2: { x: to.x - 0.45, z: to.z - 0.8 },
+    to,
   };
 }
 

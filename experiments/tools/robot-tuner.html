@@ -92,6 +92,11 @@
         <label><input type="checkbox" id="spin" /> turntable</label>
         <label><input type="checkbox" id="route" checked /> follow route</label>
       </div>
+      <div class="row" style="margin-top:0.5rem">
+        <label for="reach">route length</label>
+        <input type="range" id="reach" min="0.25" max="1" step="0.01" />
+        <output id="reachOut"></output>
+      </div>
       <div class="readout" id="readout"></div>
       <div class="hint">press <b>walk</b> to run the gait &mdash; rockAngle does nothing at phase 0, so scrubbing it while stopped looks broken</div>
       <div class="hint">drag the scene to spin &middot; arrow keys nudge 5&deg; &middot; shift-drag to walk it around the floor</div>
@@ -103,7 +108,7 @@
       import { buildScene } from "../../scene.js";
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
-      import { buildRoute, routePose, routeCycles } from "../../walk.js";
+      import { buildRoute, routePose, routeCycles, doorRoute } from "../../walk.js";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [
@@ -166,7 +171,8 @@
       const svg = document.querySelector(".room__seams");
       const doorImage = document.querySelector(".room__door");
       const params = { ...robotDefaults };
-      const walkRoute = buildRoute();
+      let routeReach = Number(new URLSearchParams(location.search).get("reach")) || 0.72;
+      let walkRoute = buildRoute(doorRoute(routeReach));
       let scene;
 
       /* Query-string overrides, so a screenshot can pin an exact pose:
@@ -287,8 +293,12 @@
           top = Math.min(top, s.y); bottom = Math.max(bottom, s.y);
         }
         const doorPx = scene.door.natural.height * Math.hypot(scene.door.matrix.a, scene.door.matrix.b);
+        const seconds = params.stepAngle > 0
+          ? (routeCycles(robot, walkRoute) * 2) / params.cadence : 0;
+        reachOut.textContent = walkRoute.length.toFixed(1);
         document.getElementById("readout").textContent =
-          `${(bottom - top).toFixed(0)}px tall on screen · ${((bottom - top) / doorPx * 100).toFixed(0)}% of the door`;
+          `${(bottom - top).toFixed(0)}px tall · ${((bottom - top) / doorPx * 100).toFixed(0)}% of the door`
+          + (seconds ? ` · walk takes ${seconds.toFixed(1)}s` : "");
         document.getElementById("dump").value = JSON.stringify(params, null, 2);
       }
 
@@ -479,6 +489,16 @@
       if (query.get("marks") === "1") { document.getElementById("marks").checked = true; }
       if (query.get("wire") === "1") { document.getElementById("wire").checked = true; }
       if (query.get("play") === "1") play.click();
+
+      const reachInput = document.getElementById("reach");
+      const reachOut = document.getElementById("reachOut");
+      reachInput.value = routeReach;
+      reachInput.addEventListener("input", () => {
+        routeReach = Number(reachInput.value);
+        walkRoute = buildRoute(doorRoute(routeReach));
+        params.phase = 0;
+        render();
+      });
 
       window.addEventListener("resize", () => { layoutRoom(); render(); });
       layoutRoom();
