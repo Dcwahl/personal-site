@@ -104,6 +104,8 @@
         <label><input type="checkbox" id="marks" /> construction</label>
         <label><input type="checkbox" id="spin" /> turntable</label>
         <label><input type="checkbox" id="route" checked /> follow route</label>
+        <label><input type="checkbox" id="arc" checked /> arc to camera</label>
+        <label><input type="checkbox" id="snap" checked /> whole steps</label>
       </div>
       <div class="row" style="margin-top:0.5rem">
         <label for="reach">route length</label>
@@ -121,7 +123,9 @@
       import { buildScene } from "../../scene.js";
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
-      import { buildRoute, routePose, routeCycles, doorRoute } from "../../walk.js";
+      import {
+        buildRoute, routePose, routeCycles, doorRoute, quantiseReach, stepLength, START_PHASE,
+      } from "../../walk.js";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [
@@ -188,6 +192,21 @@
       let routeReach = Number(new URLSearchParams(location.search).get("reach")) || 0.72;
       let walkRoute = buildRoute(doorRoute(routeReach));
       let scene;
+
+      /* The route depends on the gait: `quantiseReach` needs a step length to
+         land on, so it has to be rebuilt whenever the legs change, not only
+         when the slider moves. Resetting phase keeps the robot at the doorway
+         rather than teleporting to wherever its old distance falls on the new
+         curve — see the note on resizing in ROBOT.md. */
+      function rebuildRoute(restart = true) {
+        const options = { arrive: document.getElementById("arc").checked ? "camera" : "wall" };
+        const robot = buildRobot(params);
+        const reach = document.getElementById("snap").checked
+          ? quantiseReach(robot, routeReach, options)
+          : routeReach;
+        walkRoute = buildRoute(doorRoute(reach, options));
+        if (restart) params.phase = START_PHASE;
+      }
 
       /* Query-string overrides, so a screenshot can pin an exact pose:
          robot-tuner.html?facing=40&height=0.4 */
@@ -309,7 +328,8 @@
         const doorPx = scene.door.natural.height * Math.hypot(scene.door.matrix.a, scene.door.matrix.b);
         const seconds = params.stepAngle > 0
           ? (routeCycles(robot, walkRoute) * 2) / params.cadence : 0;
-        reachOut.textContent = walkRoute.length.toFixed(1);
+        reachOut.textContent =
+          `${walkRoute.length.toFixed(1)}u \u00b7 ${(walkRoute.length / stepLength(robot)).toFixed(2)} steps`;
         document.getElementById("readout").textContent =
           `${(bottom - top).toFixed(0)}px tall · ${((bottom - top) / doorPx * 100).toFixed(0)}% of the door`
           + (seconds ? ` · walk takes ${seconds.toFixed(1)}s` : "");
@@ -393,8 +413,16 @@
        * mockup was drawn in. Turning the robot on the spot is the axis that
        * actually matters here anyway.
        */
+      /* Params that leave the step length alone. Everything else changes how
+         far one step carries the robot, so the route has to be re-snapped. */
+      const FREE_PARAMS = new Set(["phase", "cadence", "facing", "standX", "standZ", "expression"]);
+
       const setParam = (key, value) => {
         params[key] = value;
+        // Read the button out of the DOM rather than closing over `play`: the
+        // panel calls setParam while building itself, before that const exists.
+        if (!FREE_PARAMS.has(key))
+          rebuildRoute(document.getElementById("play").dataset.running !== "1");
         const entry = inputs.get(key);
         if (!entry) return;
         entry.input.value = value;
@@ -438,7 +466,7 @@
              never gets more than one cycle from the doorway. */
           if (document.getElementById("route").checked && params.stepAngle > 0) {
             const finish = routeCycles(buildRobot(params), walkRoute);
-            if (next > finish + 1.5) next = 0; // hold at the end, then run it again
+            if (next > finish + 1.5) next = START_PHASE; // hold at the end, then run it again
           } else if (next > 1) {
             next %= 1;
           }
@@ -497,16 +525,6 @@
         render();
       });
 
-      /* View-only query flags, applied once everything they touch exists.
-         ?panel=0 hides the chrome for clean screenshots of the scene alone. */
-      if (query.get("panel") === "0") {
-        panel.style.display = "none";
-        collapse.style.display = "none";
-      }
-      if (query.get("marks") === "1") { document.getElementById("marks").checked = true; }
-      if (query.get("wire") === "1") { document.getElementById("wire").checked = true; }
-      if (query.get("play") === "1") play.click();
-
       /* Collapsing the panel, remembered between reloads. */
       const panel = document.querySelector(".panel");
       const collapse = document.getElementById("collapse");
@@ -530,14 +548,38 @@
       reachInput.value = routeReach;
       reachInput.addEventListener("input", () => {
         routeReach = Number(reachInput.value);
-        walkRoute = buildRoute(doorRoute(routeReach));
-        params.phase = 0;
+        rebuildRoute();
         render();
       });
+
+      for (const id of ["arc", "snap"]) {
+        document.getElementById(id).addEventListener("change", () => {
+          rebuildRoute();
+          render();
+        });
+      }
+
+      /* View-only query flags. These must come after everything they touch:
+         `panel` and `collapse` are consts further up this file, and reading one
+         early throws a TDZ error that silently kills the rest of the script —
+         which looks exactly like the room failing to lay out.
+         ?panel=0 hides the chrome for clean screenshots of the scene alone. */
+      if (query.get("panel") === "0") {
+        panel.style.display = "none";
+        collapse.style.display = "none";
+      }
+      if (query.get("marks") === "1") { document.getElementById("marks").checked = true; }
+      if (query.get("wire") === "1") { document.getElementById("wire").checked = true; }
+      if (query.get("arc") === "0") document.getElementById("arc").checked = false;
+      if (query.get("snap") === "0") document.getElementById("snap").checked = false;
+      // No restart: a ?phase= in the query has already been applied and is the
+      // whole point of the flag.
+      rebuildRoute(false);
 
       window.addEventListener("resize", () => { layoutRoom(); render(); });
       layoutRoom();
       render();
+      if (query.get("play") === "1") play.click();
       window.robot = { params, render };
     </script>
   </body>

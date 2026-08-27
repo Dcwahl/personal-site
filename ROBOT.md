@@ -77,42 +77,86 @@ gait.
   20° of rock is deliberately too much head-on and right at the walk angle.
 - Duration: **`D mild`** — cadence 3.2, height 0.4, legLength 0.17, ~5.2s.
   25s was honest physics; a small toy really does need 30 steps to cross a room.
+- Arrival: **arc to camera**, not a turn on the spot. `doorRoute`'s last handle
+  is aimed at the camera, so the path's own tangent delivers the heading.
+- Settle: **quantise the route to whole steps**. No amplitude decay was built.
 - Route: reactive reach, **yes**. Reactive cadence, undecided — wants a ceiling
   and a look at worst cases first.
 - Variants are **presets, never replacements**. New shape parameters default to
   0 so they reproduce the plain box, and nothing has to be deleted to explore.
 
+## Arrival, settled
+
+Both were answered together, because they turn out to be the same problem.
+
+### The arc
+
+A cubic's tangent at its end is `to - control2`, so aiming that last handle at
+the camera makes the path deliver the turn. `doorRoute(reach, { arrive })` does
+this; `arrive: "wall"` keeps the original square-to-the-room arrival and the
+pivot afterwards, so the two can be compared rather than one replacing the other.
+
+Both handles scale with `reach`. That is what keeps the curve's *shape* fixed as
+the route shortens. A handle that stays long on a short route makes the path
+swing away from the camera first and come back (an S); one that stays short puts
+the whole turn in the last two steps as a hook. Scaled at `1.8 * reach`, over
+reach 0.3–1.15:
+
+- end heading lands on the camera to within **0.06°**
+- the turn is **monotone** — zero direction reversals at any reach
+- it peaks at **~6°/step** for reach ≥ 0.6 (14.6°/step at reach 0.3, which is
+  60° of turn crammed into six steps — inherently tight, and an extreme)
+- the path never dips back toward the corner: min x is exactly the threshold
+
+`faceCamera` was a hard-coded 15°. That is only correct at reach 1 — the true
+heading to camera swings to ~30° on a short route — so it is derived from the
+arrival point now. That was a latent bug in the pivot-on-the-spot path too.
+
+### Whole steps
+
+The gait is mirror-symmetric, so a half cycle covers **exactly** the same ground
+whichever foot leads: 0.21424 local units measured from any starting phase, not
+approximately. `quantiseReach` bisects on `reach` until the route is a whole
+multiple of that (route length is monotone in reach). Verified to land on
+8.00000 / 11.00000 / 15.00000 / 17.00000 / 21.00000 steps, with the finishing
+phase always on x.25 or x.75 and `legAngle` exactly 0 — feet together.
+
+The destination moves by at most half a step to get there, a few pixels.
+
+This is the whole settle. Nothing decays, so nothing has to be kept out of the
+memoised `gaitTable`. The robot reads as having stopped rather than as having run
+out of animation because its last footfall lands on the beat.
+
+`START_PHASE` is 0.25 for the same reason: legs together, so the robot is
+standing in the open doorway before it moves. `routePose` measures distance from
+that phase rather than from zero, which is what makes both ends land clean.
+
+### Resizing mid-walk
+
+Room coordinates are absolute and the camera is fixed, so a resize re-projects
+the robot and it stays glued to the floor for free. Only the *destination* is
+aspect-dependent. Swapping the route underneath a walk in progress slides the
+robot, by an amount that grows along the route:
+
+| how far along | reach 0.72 → 0.60 | → 0.90 | → 0.71 |
+| --- | --- | --- | --- |
+| 10% | 0.01 steps, −1.2° | 0.01, +0.9° | 0.00, −0.3° |
+| 50% | 0.61 steps, −11.4° | 0.48, +9.4° | 0.17, −3.3° |
+| 75% | 1.47 steps, −12.8° | 1.36, +16.2° | 0.45, −4.4° |
+| 95% | 2.27 steps, +0.7° | 2.16, +15.6° | 0.56, −1.5° |
+
+Near the door it is invisible; near the end it is a visible pop of one to two
+steps, and a shortening route can even land *behind* the robot, so it arrives
+instantly. **Decision: freeze the route when the walk starts.** A resize during
+the ~5s walk leaves it slightly off-centre, which is much cheaper than a pop, and
+the room is sliding under a resize anyway. Rebuild freely before the walk begins.
+
+If off-centre ever matters, the fix is to keep travelled distance and re-solve
+phase against the new route's nearest point — no positional pop, only a gradual
+heading correction — but it breaks quantisation and is not worth it for a case
+this rare.
+
 ## Open
-
-### The settle
-
-The gait runs at full amplitude forever, so after arriving it marches in place
-facing camera at 20° rock — the one angle that is too much. Options:
-
-1. **Amplitude decay** — ramp `stepAngle` and `rockAngle` to 0 over the last
-   ~1.5 cycles. Steps shorten, rock fades, body comes upright.
-   *Gotcha:* `gaitTable` is memoised on constant gait parameters, so a
-   phase-varying `stepAngle` silently invalidates it. Either bake the decay into
-   the table or keep the settle out of `distanceWalked` entirely.
-2. **Quantise the route** so the walk ends exactly on a step boundary and the
-   last step lands feet-together. Adjust `reach` slightly to make the route a
-   whole number of steps. Cheap, and no decay machinery needed.
-3. **Both** — quantise so it lands clean, plus a short rock decay. Probably right.
-
-### The turn
-
-Never designed. Options:
-
-1. **Steps in place** — shuffle steps that rotate it. Most honest, reuses the
-   gait, but shows the full rock head-on, which is the problem above.
-2. **Pivot on one foot** — plant one, swing the other round. Quicker, fewer
-   steps, still mechanical.
-3. **Rigid rotation** — the whole robot turns as one piece, no stepping. Reads
-   like a turntable, which is arguably very wind-up-toy.
-4. **Arc into it** — curve the last stretch of the route so it *arrives* facing
-   camera and never turns in place at all. Eliminates the beat rather than
-   solving it; worth considering against the original brief, which wanted the
-   turn as a distinct moment.
 
 ### Reactive routing
 
