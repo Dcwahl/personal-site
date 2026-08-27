@@ -80,8 +80,10 @@ gait.
 - Arrival: **arc to camera**, not a turn on the spot. `doorRoute`'s last handle
   is aimed at the camera, so the path's own tangent delivers the heading.
 - Settle: **quantise the route to whole steps**. No amplitude decay was built.
-- Route: reactive reach, **yes**. Reactive cadence, undecided — wants a ceiling
-  and a look at worst cases first.
+- Route: **reactive reach and reactive cadence**, both clamped. Reach 0.3-1.25
+  (a cap on size, not position), cadence 2.6-4.4 steps/s, duration floats
+  2.3-5.9s. See "Fitting the viewport".
+- Resize mid-walk: **freeze the route** once walking; replan freely before.
 - Variants are **presets, never replacements**. New shape parameters default to
   0 so they reproduce the plain box, and nothing has to be deleted to explore.
 
@@ -156,15 +158,57 @@ phase against the new route's nearest point — no positional pop, only a gradua
 heading correction — but it breaks quantisation and is not worth it for a case
 this rare.
 
+## Fitting the viewport
+
+`planRoute(robot, scene, targetX)` returns `{ reach, route, steps, cadence,
+seconds, offCentre }` — one call, everything the page needs.
+
+**Reach is bisected, not solved from aspect ratio.** The closed form
+(`mockup x at screen centre = 1586 - 496 * aspect`) is real and it is exact, but
+it ignores `buildScene`'s clamp on the corner, which is what actually happens at
+the extremes. Screen x falls monotonically as reach grows — 1312 mockup px at
+reach 0.2 down to 384 at 1.2 — so a bisection is exact enough and stays honest.
+
+**It aims the silhouette, not the floor.** The robot's local origin is not its
+visual centre: it stands turned toward the camera, so its depth projects
+asymmetrically and the ink lands 10 to 53 px left of the spot underfoot,
+depending how far it walked. Aiming the destination point left it visibly left
+of centre on wide screens. `silhouetteX` poses it at `START_PHASE` at the
+arrival and takes the middle of its projected bounding box.
+
+**Reach never saturates.** The earlier note that it caps out at 1.0 was an
+artifact of the tuner slider's maximum, not the geometry. A 32:9 viewport wants
+1.43 and gets there fine.
+
+The cap that matters is **size, not position**. The route runs toward the
+camera, so a longer one arrives *bigger* — unclamped, a 32:9 lands the robot
+taller than the door it walked out of. `REACH_LIMITS.max` 1.25 holds it under
+90%. Everything from a portrait phone through 21:9 still lands dead centre, so
+the trade only ever bites on superwide.
+
+Holding a flat duration everywhere needs cadence 1.4 to 6.2 — a slow amble at
+one end, a scramble at the other, the same toy visibly changing speed with the
+window. `CADENCE_LIMITS` 2.6–4.4 clamps it and lets duration float instead.
+`seconds` is exactly `steps / cadence`: the route is a whole number of steps by
+construction, and two steps make a cycle, so the cycles cancel.
+
+| viewport | aspect | reach | steps | cadence | seconds | size vs door | off centre |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| iPhone portrait 390x844 | 0.46 | 0.40 | 8 | 2.6 | 3.1s | 55% | -13px |
+| iPad portrait 820x1180 | 0.69 | 0.30 | 6 | 2.6 | 2.3s | 53% | +2px |
+| iPad landscape 1180x820 | 1.44 | 0.78 | 16 | 3.2 | 5.0s | 67% | -13px |
+| laptop 1440x900 | 1.60 | 0.83 | 17 | 3.4 | 5.0s | 69% | +17px |
+| MacBook 16 1728x1117 | 1.55 | 0.83 | 17 | 3.4 | 5.0s | 69% | -9px |
+| 1080p 1920x1080 | 1.78 | 0.92 | 19 | 3.8 | 5.0s | 73% | +9px |
+| iPhone landscape 844x390 | 2.16 | 1.10 | 23 | 4.4 | 5.2s | 81% | -10px |
+| ultrawide 2560x1080 | 2.37 | 1.14 | 24 | 4.4 | 5.5s | 84% | +14px |
+| superwide 3840x1080 | 3.56 | 1.23 | 26 | 4.4 | 5.9s | 89% | +356px |
+
+The residual off-centre is the whole-step snap and nothing else: half a step is
+about 20px on screen at the destination, and every row lands inside that. Losing
+20px of centring to gain a feet-together stop is the right way round.
+
 ## Open
-
-### Reactive routing
-
-Reach depends only on aspect (see above). Centring costs time on wider screens:
-5.0s at aspect 1.25 up to 6.9s at 1.78+. Holding a flat 5.0s needs cadence
-3.2→4.4 steps/s. **Wants a cadence ceiling and a look at worst cases.**
-Also: at aspect ≥ 2.0 reach saturates at 1.0 and still cannot reach centre — the
-route's far end would need extending for ultrawide.
 
 ### Smaller things
 

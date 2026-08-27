@@ -10,8 +10,8 @@
  * the rate its feet carry it however the route bends.
  */
 
-import { distanceWalked, robotScale, gaitTable } from "./robot.js";
-import { doorFootprint, CAMERA_IN_ROOM } from "./camera.js";
+import { distanceWalked, robotScale, gaitTable, buildRobot, placeRobot } from "./robot.js";
+import { doorFootprint, CAMERA_IN_ROOM, project, mockupToScreen } from "./camera.js";
 
 /**
  * Heading, in degrees, from a point on the floor toward the camera.
@@ -162,20 +162,150 @@ export const stepLength = (robot) =>
  * get there, which is a few pixels on screen.
  */
 export function quantiseReach(robot, reach, options = {}) {
+  const { maxReach = Infinity } = options;
   const step = stepLength(robot);
   const lengthAt = (value) => buildRoute(doorRoute(value, options)).length;
 
-  const steps = Math.max(1, Math.round(lengthAt(reach) / step));
-  const target = steps * step;
+  const reachFor = (target) => {
+    let low = 0.05;
+    let high = Math.max(2, reach * 1.5);
+    for (let i = 0; i < 40; i += 1) {
+      const mid = (low + high) / 2;
+      if (lengthAt(mid) < target) low = mid;
+      else high = mid;
+    }
+    return (low + high) / 2;
+  };
 
-  let low = 0.05;
-  let high = Math.max(2, reach * 1.5);
+  // Rounding up can push past a cap the caller set, so drop a step rather than
+  // quietly exceed it — a cap on reach is a cap on how big the robot arrives.
+  let steps = Math.max(1, Math.round(lengthAt(reach) / step));
+  let result = reachFor(steps * step);
+  while (steps > 1 && result > maxReach) {
+    steps -= 1;
+    result = reachFor(steps * step);
+  }
+  return result;
+}
+
+/* ── fitting the performance to the viewport ──────────────────────── */
+
+/**
+ * How far the route is allowed to stretch.
+ *
+ * The cap is not about screen position, it is about size: the route runs toward
+ * the camera, so a longer one arrives *bigger*. At reach 1.25 the robot stands
+ * about 92% of the door's height; unclamped, a 32:9 viewport wants 1.43 and the
+ * robot arrives taller than the door it came out of. Everything from a portrait
+ * phone through 21:9 lands dead centre inside these limits, so the trade only
+ * ever bites on the extreme wide end.
+ */
+export const REACH_LIMITS = { min: 0.3, max: 1.25 };
+
+/**
+ * How fast it is allowed to walk, in steps per second.
+ *
+ * Holding a flat duration at every aspect needs cadence 1.4 to 6.2, which is a
+ * slow amble at one end and a scramble at the other — the same toy visibly
+ * changing speed with the window. Clamping instead lets the duration float
+ * (about 2.7s to 6.1s across real viewports) and keeps the walk recognisably
+ * the same walk.
+ */
+export const CADENCE_LIMITS = { min: 2.6, max: 4.4 };
+
+export const TARGET_SECONDS = 5;
+
+const clamp = (value, low, high) => Math.min(Math.max(value, low), high);
+
+/**
+ * Screen x of the middle of the robot's silhouette, standing settled at the end
+ * of a route of this length.
+ *
+ * Not the same as the screen x of the destination itself. The robot's local
+ * origin is not its visual centre — it stands turned toward the camera, so its
+ * depth projects asymmetrically — and the ink ends up 10 to 53 px left of the
+ * spot underfoot depending on how far it walked. Aiming the point on the floor
+ * would leave the robot visibly left of centre on a wide screen.
+ *
+ * Measured at `START_PHASE`, which is where the walk both begins and ends: feet
+ * together, arms and key where they will actually be when it stops.
+ */
+function silhouetteX(robot, scene, reach, options) {
+  const to = doorRoute(reach, options).to;
+  const settled = buildRobot({ ...robot.params, phase: START_PHASE });
+  const toScreen = mockupToScreen(scene);
+
+  let low = Infinity;
+  let high = -Infinity;
+  for (const solid of placeRobot(settled, { x: to.x, z: to.z, facing: headingToCamera(to), travel: 0 })) {
+    for (const quad of solid.quads) {
+      for (const vertex of quad.points) {
+        const x = toScreen(project(vertex)).x;
+        low = Math.min(low, x);
+        high = Math.max(high, x);
+      }
+    }
+  }
+  return (low + high) / 2;
+}
+
+/**
+ * The reach that puts the robot under `targetX` on screen.
+ *
+ * Bisected rather than solved: screen x falls monotonically as reach grows
+ * (1312 mockup px at reach 0.2 down to 384 at 1.2), so a bisection is exact
+ * enough and stays honest about `buildScene`'s clamp on the corner, which a
+ * closed form in aspect ratio quietly ignores at the extremes.
+ *
+ * Pass a `robot` to aim its silhouette; without one this aims the point on the
+ * floor it will be standing on, which is off by up to a robot's half-width.
+ */
+export function reachForScreenX(scene, targetX, options = {}) {
+  const toScreen = mockupToScreen(scene);
+  const screenX = options.robot
+    ? (reach) => silhouetteX(options.robot, scene, reach, options)
+    : (reach) => toScreen(project({ ...doorRoute(reach, options).to, y: 0 })).x;
+
+  let low = REACH_LIMITS.min;
+  let high = REACH_LIMITS.max;
+  if (screenX(low) < targetX) return low;
+  if (screenX(high) > targetX) return high;
+
   for (let i = 0; i < 40; i += 1) {
     const mid = (low + high) / 2;
-    if (lengthAt(mid) < target) low = mid;
+    if (screenX(mid) > targetX) low = mid;
     else high = mid;
   }
   return (low + high) / 2;
+}
+
+/**
+ * Fit the whole walk to a viewport: how far, how many steps, how fast.
+ *
+ * Duration is exactly `steps / cadence` — the route is a whole number of steps
+ * by construction, and two steps make a cycle, so the cycles cancel.
+ */
+export function planRoute(robot, scene, targetX, options = {}) {
+  const { seconds = TARGET_SECONDS, snap = true } = options;
+
+  const wanted = reachForScreenX(scene, targetX, { ...options, robot });
+  const reach = snap
+    ? quantiseReach(robot, wanted, { ...options, maxReach: REACH_LIMITS.max })
+    : wanted;
+  const route = buildRoute(doorRoute(reach, options));
+  const steps = Math.round(route.length / stepLength(robot));
+  const cadence = clamp(steps / seconds, CADENCE_LIMITS.min, CADENCE_LIMITS.max);
+
+  return {
+    reach,
+    route,
+    steps,
+    cadence,
+    seconds: steps / cadence,
+    // How far the robot actually lands from where it was aimed. Snapping to
+    // whole steps costs under 20px on every viewport measured.
+    offCentre: silhouetteX(robot, scene, reach, options) - targetX,
+  };
 }
 
 /* ── driving it ───────────────────────────────────────────────────── */
