@@ -442,6 +442,13 @@
         render();
       });
 
+      /* View-only query flags, applied once everything they touch exists.
+         ?panel=0 hides the chrome for clean screenshots of the scene alone. */
+      if (query.get("panel") === "0") document.querySelector(".panel").style.display = "none";
+      if (query.get("marks") === "1") { document.getElementById("marks").checked = true; }
+      if (query.get("wire") === "1") { document.getElementById("wire").checked = true; }
+      if (query.get("play") === "1") play.click();
+
       window.addEventListener("resize", () => { layoutRoom(); render(); });
       layoutRoom();
       render();

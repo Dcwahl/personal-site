@@ -75,6 +75,7 @@ export const robotDefaults = {
   phase: 0, // 0..1 over one full cycle, which is two steps
   stepAngle: 0, // degrees each leg swings fore and aft of vertical
   rockAngle: 0, // degrees the body leans onto the planted foot
+  rockLead: 0.115, // cycles by which the weight shift anticipates the step
   cadence: 1.7, // steps per second; two steps make one cycle
 
   armSwing: 0, // degrees fore/aft at the shoulder; the walk will drive this
@@ -131,7 +132,7 @@ export const robotPresets = {
     headHeight: 0.25, headWidth: 0.34, headDepth: 0.23,
     neckHeight: 0, antennaHeight: 0.13,
     screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
-    stepAngle: 16, rockAngle: 9, phase: 0.25,
+    legLength: 0.13, stepAngle: 27.5, rockAngle: 9.5, cadence: 1.2, phase: 0.25,
   },
 
   /* Tin-toy proportions, but the face is a little screen. The head grows a
@@ -407,6 +408,38 @@ const mirrorZ = (quads) =>
 /* ── gait ─────────────────────────────────────────────────────────── */
 
 /**
+ * The foot the robot is leaning onto. This decides where the body rocks about,
+ * because leaning is what unloads the other foot.
+ */
+const stanceFoot = (roll) => (roll >= 0 ? "foot.left" : "foot.right");
+
+/** The lowest point of one foot, in the robot's own coordinates. */
+const footFloor = (robot, name) =>
+  Math.min(
+    ...robot.parts
+      .find((part) => part.name === name)
+      .quads.flatMap((quad) => quad.points.map((point) => point.y)),
+  );
+
+/**
+ * The foot actually carrying the robot.
+ *
+ * Neither signal alone is enough, and they fail in opposite directions.
+ * Whichever foot is *lowest* is wrong just after a switch, when the trailing
+ * foot is still down on its toe though the weight has gone. Whichever foot the
+ * *rock* favours is wrong just as wrong the other way, because the leading
+ * foot has not landed yet — measured at 0.019 above the floor early in its own
+ * nominal stance. So: whichever foot is on the floor, and when both are (true
+ * double support) the lean breaks the tie.
+ */
+function supportFoot(robot) {
+  const left = footFloor(robot, "foot.left");
+  const right = footFloor(robot, "foot.right");
+  if (Math.abs(left - right) < 1e-9) return stanceFoot(robot.step.roll);
+  return left < right ? "foot.left" : "foot.right";
+}
+
+/**
  * One clock drives the whole pose.
  *
  * It is clockwork, so every moving part comes off a single phase rather than
@@ -428,11 +461,18 @@ const mirrorZ = (quads) =>
  * stays right for any foot shape or overhang.
  */
 export function gait(phase, p) {
-  const turn = phase * Math.PI * 2;
+  const turn = (phase - Math.floor(phase)) * Math.PI * 2;
   const angle = p.stepAngle * Math.cos(turn);
 
-  // Lean onto the planted foot; the other one is then free to swing through.
-  const roll = p.rockAngle * Math.sin(turn);
+  /* Lean onto the planted foot; the other is then free to swing through.
+   *
+   * The lean *leads* the step. With no lead the rock is zero exactly at the
+   * transfer, so for a moment neither foot is unweighted, the legs keep
+   * turning, and the trailing foot — still down on its toe — gets rolled
+   * backwards. That showed up as an 11% backslide twice a cycle. Shifting the
+   * weight before the foot needs to leave is what a real walk does, and it is
+   * what makes the transfer clean. */
+  const roll = p.rockAngle * Math.sin(turn + p.rockLead * Math.PI * 2);
 
   return {
     // Left leads at phase 0, right leads at 0.5.
@@ -646,9 +686,19 @@ export function buildRobot(params = {}) {
   );
 
   /* The rock goes on last, over everything, so the legs swing beneath the body
-   * rather than with it. */
+   * rather than with it.
+   *
+   * The pivot has to sit at the stance foot's contact, not at y = 0. The leg
+   * swing has already carried that contact off the floor plane, and rolling
+   * about a line below it drags the planted foot sideways — a lateral skate of
+   * nearly 10% of walking speed, which no amount of tuning the advance can fix
+   * because the advance only moves the robot along its heading. */
   if (step.roll !== 0) {
-    const pivot = { y: 0, z: step.pivotZ };
+    const stance = parts.find((part) => part.name === stanceFoot(step.roll));
+    const pivot = {
+      y: Math.min(...stance.quads.flatMap((q) => q.points.map((point) => point.y))),
+      z: step.pivotZ,
+    };
     for (const part of parts) part.quads = hingeX(part.quads, pivot, step.roll);
   }
 
@@ -671,6 +721,93 @@ export function buildRobot(params = {}) {
   return { parts, params: p, crown, shoulderLine, step, lift: -contact };
 }
 
+/* ── how far a step actually carries it ───────────────────────────── */
+
+/**
+ * The point of one named foot that is nearest the floor.
+ *
+ * Which foot is *carrying* is decided by the rock, not by which is lowest.
+ * Those differ right after each stance switch: at full split the trailing foot
+ * is still the lowest because it is up on its toe, even though the weight has
+ * already gone onto the leading foot. Integrating against the trailing one
+ * rolls it toe-to-heel and drives the body backwards -- an 11% backslide,
+ * twice a cycle. The lean is the honest signal, because leaning is what
+ * unloads the other foot in the first place.
+ */
+function contactPoint(robot, foot) {
+  let best = null;
+  const part = robot.parts.find((candidate) => candidate.name === foot);
+  part.quads.forEach((quad, qi) =>
+    quad.points.forEach((point, pi) => {
+      if (!best || point.y < best.y) best = { part: foot, qi, pi, x: point.x, y: point.y };
+    }),
+  );
+  return best;
+}
+
+
+
+const vertexAt = (robot, ref) =>
+  robot.parts.find((part) => part.name === ref.part).quads[ref.qi].points[ref.pi];
+
+let gaitCache = { key: null };
+
+/**
+ * How far the body travels over one cycle, solved rather than chosen.
+ *
+ * Walking speed must come *out of* the gait, never be set alongside it. Any
+ * independently chosen speed leaves the planted foot sliding along the floor,
+ * and that skate is the single thing that reads as cheap 3D no matter how good
+ * the rest is.
+ *
+ * The constraint is simply that a planted foot does not move. So the body's
+ * displacement is minus the drift of whichever vertex is currently touching
+ * down, integrated across the cycle. Re-anchoring to the lowest vertex each
+ * sample is what makes the foot *roll* heel to toe rather than pivot about one
+ * fixed corner, which is what a stiff foot with no ankle really does. At the
+ * moment the stance passes to the other foot nothing is integrated, because
+ * the new foot has only just landed and constrains nothing yet.
+ */
+export function gaitTable(p, samples = 240) {
+  const key = [
+    p.stepAngle, p.rockAngle, p.rockLead, p.legLength, p.legSpread, p.footHeight,
+    p.footWidth, p.footDepth, p.footForward, samples,
+  ].join(",");
+  if (gaitCache.key === key) return gaitCache.value;
+
+  const table = [0];
+  let advance = 0;
+  let anchor = null;
+
+  for (let i = 0; i <= samples; i += 1) {
+    const phase = i / samples;
+    const robot = buildRobot({ ...p, phase });
+    const foot = supportFoot(robot);
+    // Only integrate while the same foot is still carrying the robot; at the
+    // handover the new foot has just landed and constrains nothing yet.
+    if (anchor && anchor.part === foot) advance -= vertexAt(robot, anchor).x - anchor.x;
+    if (i > 0) table.push(advance);
+    const contact = contactPoint(robot, foot);
+    anchor = { part: foot, qi: contact.qi, pi: contact.pi, x: contact.x };
+  }
+
+  const value = { table, perCycle: table[table.length - 1], samples };
+  gaitCache = { key, value };
+  return value;
+}
+
+/** Distance travelled by `phase`, which may run past 1 for repeated cycles. */
+export function distanceWalked(p) {
+  if (!p.stepAngle) return 0;
+  const { table, perCycle, samples } = gaitTable(p);
+  const cycles = Math.floor(p.phase);
+  const position = (p.phase - cycles) * samples;
+  const low = Math.floor(position);
+  const blend = position - low;
+  const within = table[low] + (table[Math.min(low + 1, samples)] - table[low]) * blend;
+  return cycles * perCycle + within;
+}
+
 /* ── placing it in the room ───────────────────────────────────────── */
 
 /**
@@ -690,10 +827,16 @@ export function placeRobot(robot) {
   const cos = Math.cos(yaw);
   const sin = Math.sin(yaw);
 
+  // Walked distance moves the robot along its own heading. It is derived from
+  // the gait, so the planted foot cannot slide.
+  const travelled = distanceWalked(p) * scale;
+  const originX = p.standX + travelled * cos;
+  const originZ = p.standZ + travelled * sin;
+
   const toRoom = (v) => ({
-    x: p.standX + (v.x * cos - v.z * sin) * scale,
+    x: originX + (v.x * cos - v.z * sin) * scale,
     y: v.y * scale,
-    z: p.standZ + (v.x * sin + v.z * cos) * scale,
+    z: originZ + (v.x * sin + v.z * cos) * scale,
   });
   const dirToRoom = (v) => ({
     x: v.x * cos - v.z * sin,
