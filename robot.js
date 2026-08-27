@@ -75,6 +75,7 @@ export const robotDefaults = {
   phase: 0, // 0..1 over one full cycle, which is two steps
   stepAngle: 0, // degrees each leg swings fore and aft of vertical
   rockAngle: 0, // degrees the body leans onto the planted foot
+  cadence: 1.7, // steps per second; two steps make one cycle
 
   armSwing: 0, // degrees fore/aft at the shoulder; the walk will drive this
   armRaise: 42, // degrees out sideways, clearing the flank for the key
@@ -123,6 +124,15 @@ export const robotPresets = {
   },
 
   chamfered: { torsoChamfer: 0.3, headChamfer: 0.3 },
+
+  /* The bmo body, mid-stride. Selecting this and pressing play is the quickest
+   * way to see what the gait actually looks like. */
+  walk: {
+    headHeight: 0.25, headWidth: 0.34, headDepth: 0.23,
+    neckHeight: 0, antennaHeight: 0.13,
+    screenWidth: 0.74, screenHeight: 0.6, screenY: 0.52,
+    stepAngle: 16, rockAngle: 9, phase: 0.25,
+  },
 
   /* Tin-toy proportions, but the face is a little screen. The head grows a
    * touch to give the screen somewhere to live without crowding it. */

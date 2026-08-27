@@ -46,6 +46,11 @@
         border: 1px solid rgb(23 20 15 / 30%); border-radius: 3px;
       }
       .actions button:hover { background: rgb(23 20 15 / 8%); }
+      .actions button.primary {
+        font-weight: 600; letter-spacing: 0.04em;
+        background: rgb(23 20 15 / 10%); border-color: rgb(23 20 15 / 45%);
+      }
+      .actions button.primary[data-running="1"] { background: rgb(205 146 104 / 45%); }
       .toggles { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.5rem; }
       .toggles label { display: flex; gap: 0.3rem; align-items: center; cursor: pointer; }
       textarea {
@@ -78,12 +83,16 @@
         <button id="reset">reset</button>
         <button id="copy">copy params</button>
       </div>
+      <div class="actions">
+        <button id="play" class="primary">&#9654;&nbsp; walk</button>
+      </div>
       <div class="toggles">
         <label><input type="checkbox" id="wire" /> wireframe</label>
         <label><input type="checkbox" id="marks" /> construction</label>
         <label><input type="checkbox" id="spin" /> turntable</label>
       </div>
       <div class="readout" id="readout"></div>
+      <div class="hint">press <b>walk</b> to run the gait &mdash; rockAngle does nothing at phase 0, so scrubbing it while stopped looks broken</div>
       <div class="hint">drag the scene to spin &middot; arrow keys nudge 5&deg; &middot; shift-drag to walk it around the floor</div>
       <div id="sliders"></div>
       <textarea id="dump" readonly></textarea>
@@ -96,14 +105,15 @@
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [
+        ["gait", [
+          ["phase", 0, 1, 0.01], ["stepAngle", 0, 35, 0.5], ["rockAngle", 0, 25, 0.5],
+          ["cadence", 0.2, 5, 0.1],
+        ]],
         ["placement", [
           ["height", 0.1, 0.8, 0.005],
           ["standX", 0, 8, 0.05],
           ["standZ", 0, 8, 0.05],
           ["facing", -180, 180, 1],
-        ]],
-        ["gait", [
-          ["phase", 0, 1, 0.01], ["stepAngle", 0, 35, 0.5], ["rockAngle", 0, 25, 0.5],
         ]],
         ["legs and feet", [
           ["footHeight", 0.01, 0.15, 0.005], ["footWidth", 0.05, 0.3, 0.005],
@@ -363,6 +373,27 @@
           spinning = requestAnimationFrame(step);
         };
         spinning = requestAnimationFrame(step);
+      });
+
+      /* Watching it move is the only way to judge a gait; a phase slider on a
+         still frame tells you almost nothing. */
+      let walking = 0;
+      const play = document.getElementById("play");
+      play.addEventListener("click", () => {
+        const running = play.dataset.running === "1";
+        cancelAnimationFrame(walking);
+        play.dataset.running = running ? "0" : "1";
+        play.innerHTML = running ? "&#9654;&nbsp; walk" : "&#9646;&#9646;&nbsp; stop";
+        if (running) return;
+        let last = performance.now();
+        const tick = (now) => {
+          // Two steps make one cycle, so cadence halves into cycles per second.
+          setParam("phase", (params.phase + ((now - last) / 1000) * (params.cadence / 2)) % 1);
+          last = now;
+          render();
+          walking = requestAnimationFrame(tick);
+        };
+        walking = requestAnimationFrame(tick);
       });
 
       let drag = null;
