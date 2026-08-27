@@ -817,21 +817,32 @@ export function distanceWalked(p) {
  * Height is given in door-heights because the door is the room's only stated
  * scale reference — see `camera.js`.
  */
-export function placeRobot(robot) {
+/**
+ * Local units -> room units.
+ *
+ * Normalised on the crown, so `height` is the real floor-to-head height in
+ * door-heights no matter what the proportions sum to. Without this, retuning
+ * any one segment silently rescales the whole robot.
+ */
+export const robotScale = (robot) =>
+  (robot.params.height * ROOM_CAMERA.doorHeight) / robot.crown;
+
+/**
+ * @param pose optional override of where the robot stands and which way it
+ *   points, for a caller driving it along a route rather than a fixed heading.
+ */
+export function placeRobot(robot, pose) {
   const p = robot.params;
-  // Normalise on the crown, so `height` is the real floor-to-head height in
-  // door-heights no matter what the proportions sum to. Without this, retuning
-  // any one segment silently rescales the whole robot.
-  const scale = (p.height * ROOM_CAMERA.doorHeight) / robot.crown;
-  const yaw = (p.facing * Math.PI) / 180;
+  const scale = robotScale(robot);
+  const yaw = ((pose?.facing ?? p.facing) * Math.PI) / 180;
   const cos = Math.cos(yaw);
   const sin = Math.sin(yaw);
 
   // Walked distance moves the robot along its own heading. It is derived from
   // the gait, so the planted foot cannot slide.
-  const travelled = distanceWalked(p) * scale;
-  const originX = p.standX + travelled * cos;
-  const originZ = p.standZ + travelled * sin;
+  const travelled = (pose?.travel ?? distanceWalked(p)) * scale;
+  const originX = (pose?.x ?? p.standX) + travelled * cos;
+  const originZ = (pose?.z ?? p.standZ) + travelled * sin;
 
   const toRoom = (v) => ({
     x: originX + (v.x * cos - v.z * sin) * scale,

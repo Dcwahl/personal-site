@@ -90,6 +90,7 @@
         <label><input type="checkbox" id="wire" /> wireframe</label>
         <label><input type="checkbox" id="marks" /> construction</label>
         <label><input type="checkbox" id="spin" /> turntable</label>
+        <label><input type="checkbox" id="route" checked /> follow route</label>
       </div>
       <div class="readout" id="readout"></div>
       <div class="hint">press <b>walk</b> to run the gait &mdash; rockAngle does nothing at phase 0, so scrubbing it while stopped looks broken</div>
@@ -102,6 +103,7 @@
       import { buildScene } from "../../scene.js";
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
+      import { buildRoute, routePose } from "../../walk.js";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [
@@ -164,6 +166,7 @@
       const svg = document.querySelector(".room__seams");
       const doorImage = document.querySelector(".room__door");
       const params = { ...robotDefaults };
+      const walkRoute = buildRoute();
       let scene;
 
       /* Query-string overrides, so a screenshot can pin an exact pose:
@@ -228,6 +231,19 @@
         ]) { context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); }
         context.stroke();
         context.restore();
+        // The walk route, so the path can be seen as well as followed.
+        context.save();
+        context.strokeStyle = "rgba(205,146,104,0.95)";
+        context.lineWidth = 1.5;
+        context.setLineDash([5, 4]);
+        context.beginPath();
+        for (let i = 0; i <= 100; i += 1) {
+          const q = at(walkRoute.at((i / 100) * walkRoute.length).x, 0, walkRoute.at((i / 100) * walkRoute.length).z);
+          if (i) context.lineTo(q.x, q.y); else context.moveTo(q.x, q.y);
+        }
+        context.stroke();
+        context.restore();
+
         // Where the robot's feet are told to be.
         const feet = at(params.standX, 0, params.standZ);
         context.save();
@@ -257,7 +273,9 @@
         context.clearRect(0, 0, window.innerWidth, window.innerHeight);
         const toScreen = mockupToScreen(scene);
         const robot = buildRobot(params);
-        const quads = placeRobot(robot);
+        const onRoute = document.getElementById("route").checked && params.stepAngle > 0;
+        const pose = onRoute ? routePose(robot, walkRoute) : undefined;
+        const quads = placeRobot(robot, pose);
 
         if (document.getElementById("marks").checked) drawConstruction(toScreen);
         if (document.getElementById("wire").checked) drawWire(quads, toScreen);
@@ -341,7 +359,7 @@
       document.getElementById("copy").addEventListener("click", () => {
         navigator.clipboard?.writeText(JSON.stringify(params, null, 2));
       });
-      for (const id of ["wire", "marks"])
+      for (const id of ["wire", "marks", "route"])
         document.getElementById(id).addEventListener("change", render);
 
       /* ── spinning it ───────────────────────────────────────────
