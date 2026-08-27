@@ -7,11 +7,12 @@ Branch **`robot`**. `main` is untouched.
 
 ## Where it stands
 
-Working: the robot, its gait, and its walk from the doorway to centre frame,
-all driveable from `experiments/tools/robot-tuner.html`.
+Working end to end: the robot stands in the doorway, walks an arc out onto the
+floor, arrives facing the camera on a feet-together beat, and the route sizes
+itself to the viewport. All driveable from `experiments/tools/robot-tuner.html`.
 
-Not built yet: the settle, the turn-to-camera *style*, reactive routing, the
-door opening, the paper it presents, and any integration with the actual page.
+Not built: the door opening, the paper it presents, what the arms do, the
+shuffle gait, and any integration with the actual page.
 
 | File | Role |
 | --- | --- |
@@ -209,6 +210,42 @@ about 20px on screen at the destination, and every row lands inside that. Losing
 20px of centring to gain a feet-together stop is the right way round.
 
 ## Open
+
+### The shuffle gait
+
+Asked for alongside the stride ("would it be too greedy to ask for both?").
+Never started — the stride is the one that got built. It is **not** half-done,
+and it is **not** a preset away, which is the useful thing to know:
+
+**Every bit of forward motion in the rig comes from the leg swing.** At
+`stepAngle` 0 the gait table's `perCycle` is exactly 0 no matter how hard it
+rocks. `roll` is a `hingeX` — side to side — and there is no yaw anywhere in
+`gait()`. A real waddle advances by *pivoting about the planted foot*, which is
+yaw, so the motion a shuffle is made of does not exist here yet.
+
+Small-step-plus-heavy-rock is reachable today, but it cannot cross the room.
+Step length falls off fast, and the step count is what pays for it:
+
+| stepAngle | step (room units) | steps to cross | at the 4.4 ceiling | for a 5s crossing |
+| --- | --- | --- | --- | --- |
+| 27.5 (the stride) | 0.210 | 17 | 3.9s | 3.4 steps/s |
+| 20 | 0.145 | 25 | 5.7s | 5.0 steps/s |
+| 14 | 0.094 | 39 | 8.9s | 7.8 steps/s |
+| 10 | 0.065 | 56 | 12.7s | 11.2 steps/s |
+| 8 | 0.051 | 71 | 16.1s | 14.2 steps/s |
+
+So the options are:
+
+1. **Add yaw about the stance foot.** The honest waddle, and the advance then
+   comes from the turn rather than the swing, so it can be tuned to any speed.
+   Real work: the anti-skate integration in `gaitTable` currently measures
+   `-d(contact.x)`, and a yawing contact needs the same treatment in two axes
+   plus a heading contribution feeding back into the route.
+2. **Drop it.** The arc arrival removed the turn-in-place, which was the other
+   place a shuffle would have earned its keep.
+
+Worth noting the second option got stronger since the shuffle was first asked
+for — there is no longer a turn beat that needs a different gait.
 
 ### Smaller things
 
