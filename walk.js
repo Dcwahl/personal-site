@@ -10,7 +10,7 @@
  * the rate its feet carry it however the route bends.
  */
 
-import { distanceWalked, robotScale } from "./robot.js";
+import { distanceWalked, robotScale, gaitTable } from "./robot.js";
 import { doorFootprint } from "./camera.js";
 
 /**
@@ -91,6 +91,16 @@ export function buildRoute(spec = doorRoute(), samples = 600) {
   };
 
   return { at, length, point, spec };
+}
+
+/**
+ * Total phase needed to walk the route and complete the turn, so a previewer
+ * knows when the performance is over rather than guessing.
+ */
+export function routeCycles(robot, route, options = {}) {
+  const { turnOver = 0.55 } = options;
+  const perCycle = gaitTable(robot.params).perCycle * robotScale(robot);
+  return (route.length + turnOver) / perCycle;
 }
 
 /** Shortest signed turn from one heading to another, in degrees. */

@@ -103,12 +103,12 @@
       import { buildScene } from "../../scene.js";
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
-      import { buildRoute, routePose } from "../../walk.js";
+      import { buildRoute, routePose, routeCycles } from "../../walk.js";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [
         ["gait", [
-          ["phase", 0, 1, 0.01], ["stepAngle", 0, 35, 0.5], ["rockAngle", 0, 25, 0.5],
+          ["phase", 0, 20, 0.02], ["stepAngle", 0, 35, 0.5], ["rockAngle", 0, 25, 0.5],
           ["cadence", 0.2, 5, 0.1],
         ]],
         ["placement", [
@@ -406,7 +406,20 @@
         let last = performance.now();
         const tick = (now) => {
           // Two steps make one cycle, so cadence halves into cycles per second.
-          setParam("phase", (params.phase + ((now - last) / 1000) * (params.cadence / 2)) % 1);
+          let next = params.phase + ((now - last) / 1000) * (params.cadence / 2);
+
+          /* Phase must be free to run past 1. Wrapping it to a single cycle is
+             what made the robot snap back to the door over and over: distance
+             walked is measured from phase, so a phase that never exceeds 1
+             never gets more than one cycle from the doorway. */
+          if (document.getElementById("route").checked && params.stepAngle > 0) {
+            const finish = routeCycles(buildRobot(params), walkRoute);
+            if (next > finish + 1.5) next = 0; // hold at the end, then run it again
+          } else if (next > 1) {
+            next %= 1;
+          }
+
+          setParam("phase", next);
           last = now;
           render();
           walking = requestAnimationFrame(tick);
