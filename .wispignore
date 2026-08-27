@@ -1,6 +1,7 @@
 # Local documentation and tooling
 README.md
 TODO.md
+ROBOT.md
 .claude/
 .DS_Store
 

@@ -94,7 +94,8 @@ export const robotDefaults = {
   keyBowBar: 0.026,
   keyBowThickness: 0.02,
   keyHeightOnTorso: 0.22,
-  keyTurn: 0, // degrees about the shaft; the walk will drive this
+  keyTurn: 0, // degrees about the shaft, as a fixed offset
+  keySpin: 1, // turns of the key per gait cycle; this is a wind-up toy
 };
 
 /**
@@ -693,8 +694,13 @@ export function buildRobot(params = {}) {
   );
   // Each box is added separately: sorting happens per convex solid, and the
   // key as a whole is not convex.
+  /* The key turns as it walks. It is the one part whose motion says out loud
+   * what kind of machine this is, and it comes off the same phase as
+   * everything else — one gear train, as clockwork should be. Negative because
+   * a wind-up toy's key unwinds while the toy goes. */
+  const keyAngle = p.keyTurn - (p.stepAngle > 0 ? p.phase * 360 * p.keySpin : 0);
   keyParts.forEach((solid, index) =>
-    add(`key.${index}`, hinge(solid, { x: 0, y: keyY }, p.keyTurn)),
+    add(`key.${index}`, hinge(solid, { x: 0, y: keyY }, keyAngle)),
   );
 
   /* The rock goes on last, over everything, so the legs swing beneath the body
