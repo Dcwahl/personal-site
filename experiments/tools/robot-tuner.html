@@ -31,6 +31,18 @@
         opacity: 0.55;
       }
       .panel h2:first-of-type { margin-top: 0.2rem; }
+      /* The panel covers the door, which is the one thing the robot has to
+         agree with. Getting it out of the way has to be one keystroke. */
+      .panel { transition: transform 0.18s ease; }
+      .panel.collapsed { transform: translateX(100%); }
+      .collapse {
+        position: fixed; top: 0.55rem; right: 0.55rem; z-index: 20;
+        width: 1.9rem; height: 1.9rem; padding: 0; cursor: pointer;
+        font: 600 13px/1 ui-monospace, monospace; color: var(--ink);
+        background: rgb(218 201 164 / 85%); border: 1px solid rgb(23 20 15 / 35%);
+        border-radius: 3px;
+      }
+      .collapse:hover { background: rgb(23 20 15 / 12%); }
       /* styles.css makes the canvas inert on the real site. Here it is the
          handle you grab to spin the robot. */
       canvas { pointer-events: auto; cursor: grab; }
@@ -74,6 +86,7 @@
       <canvas aria-hidden="true"></canvas>
     </main>
 
+    <button id="collapse" class="collapse" title="hide the panel (h)">&rsaquo;</button>
     <aside class="panel">
       <div class="actions">
         <select id="preset" title="named variants"></select>
@@ -485,10 +498,31 @@
 
       /* View-only query flags, applied once everything they touch exists.
          ?panel=0 hides the chrome for clean screenshots of the scene alone. */
-      if (query.get("panel") === "0") document.querySelector(".panel").style.display = "none";
+      if (query.get("panel") === "0") {
+        panel.style.display = "none";
+        collapse.style.display = "none";
+      }
       if (query.get("marks") === "1") { document.getElementById("marks").checked = true; }
       if (query.get("wire") === "1") { document.getElementById("wire").checked = true; }
       if (query.get("play") === "1") play.click();
+
+      /* Collapsing the panel, remembered between reloads. */
+      const panel = document.querySelector(".panel");
+      const collapse = document.getElementById("collapse");
+      const setCollapsed = (on) => {
+        panel.classList.toggle("collapsed", on);
+        collapse.innerHTML = on ? "&lsaquo;" : "&rsaquo;";
+        collapse.title = on ? "show the panel (h)" : "hide the panel (h)";
+        try { localStorage.setItem("tuner.collapsed", on ? "1" : "0"); } catch {}
+      };
+      let startCollapsed = false;
+      try { startCollapsed = localStorage.getItem("tuner.collapsed") === "1"; } catch {}
+      setCollapsed(startCollapsed);
+      collapse.addEventListener("click", () => setCollapsed(!panel.classList.contains("collapsed")));
+      window.addEventListener("keydown", (event) => {
+        if (event.key !== "h" || event.target.tagName === "INPUT" || event.target.tagName === "SELECT") return;
+        setCollapsed(!panel.classList.contains("collapsed"));
+      });
 
       const reachInput = document.getElementById("reach");
       const reachOut = document.getElementById("reachOut");
