@@ -21,6 +21,11 @@ The room scene lives at the repository root and *is* the site:
 | `styles.css` | Styling |
 | `scene.js` | Room perspective model, door placement, floor-seam geometry |
 | `room.js` | Applies the scene to the DOM on load and resize |
+| `door.js` | The door's swinging panel, and the opening behind it |
+| `camera.js` | The room's 3D camera, recovered from the door art |
+| `robot.js` | The robot's body, gait, and line renderer |
+| `walk.js` | The route out of the doorway, sized to the viewport |
+| `about.js` | The about sequence: door, reveal, walk |
 | `flight.js` | Paper-plane motion and camera |
 | `trail.js` | The etched trail the plane leaves behind |
 | `door.svg` | The door artwork |
@@ -107,10 +112,11 @@ npx wispctl@latest deploy huffsduster.bsky.social --path . --site dcwahl
 
 The `--site dcwahl` is what makes this update the existing site rather than
 creating another one. `deploy` prompts with the file list before uploading;
-read it. Expect **7 files, roughly 25 KB**:
+read it. Expect **12 files, roughly 110 KB**:
 
 ```text
-index.html  styles.css  scene.js  room.js  flight.js  trail.js  door.svg
+index.html  styles.css  scene.js   room.js    door.js   camera.js
+robot.js    walk.js    about.js   flight.js  trail.js  door.svg
 ```
 
 If any `.png`, `README.md`, `TODO.md`, or anything under `experiments/` appears

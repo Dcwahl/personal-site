@@ -77,6 +77,13 @@
   <body>
     <main>
       <div class="room" aria-hidden="true">
+        <svg class="room__doorway">
+          <defs>
+            <clipPath id="doorway-clip"><path data-door="clip" /></clipPath>
+          </defs>
+          <path class="doorway__beyond" data-door="hole" />
+          <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
+        </svg>
         <img class="room__door" src="../../door.svg" alt="" />
         <svg class="room__seams" preserveAspectRatio="none">
           <path data-seam="wallCorner" /><path data-seam="leftFloor" />
@@ -109,6 +116,11 @@
         <label><input type="checkbox" id="fit" checked /> fit to window</label>
       </div>
       <div class="row" style="margin-top:0.5rem">
+        <label for="door">door</label>
+        <input type="range" id="door" min="0" max="90" step="0.5" />
+        <output id="doorOut"></output>
+      </div>
+      <div class="row">
         <label for="reach">route length</label>
         <input type="range" id="reach" min="0.25" max="1" step="0.01" />
         <output id="reachOut"></output>
@@ -122,6 +134,7 @@
 
     <script type="module">
       import { buildScene } from "../../scene.js";
+      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js";
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js";
       import {
@@ -190,6 +203,11 @@
       const context = canvas.getContext("2d");
       const svg = document.querySelector(".room__seams");
       const doorImage = document.querySelector(".room__door");
+      const doorway = document.querySelector(".room__doorway");
+      const doorPart = (n) => doorway.querySelector(`[data-door="${n}"]`);
+      const doorSlider = document.getElementById("door");
+      const doorOut = document.getElementById("doorOut");
+      let doorAngle = DOOR_PANEL.rest;
       const params = { ...robotDefaults };
       let routeReach = Number(new URLSearchParams(location.search).get("reach")) || 0.72;
       let walkRoute = buildRoute(doorRoute(routeReach));
@@ -238,6 +256,16 @@
         else if (Number.isFinite(Number(value))) params[key] = Number(value);
       }
 
+      /* The door renders the same way it does on the site: door.svg is the
+         frame only, and the panel is projected through the room camera. Past
+         EDGE_ON it is edge-on to us and clipped away, so the slider stops
+         showing anything - that is the geometry, not a broken control. */
+      function drawDoor() {
+        if (!scene) return;
+        doorPart("panel").setAttribute("d", panelPath(scene, doorAngle));
+        doorOut.textContent = `${doorAngle.toFixed(1)}\u00b0${doorAngle >= EDGE_ON ? " \u00b7 hidden" : ""}`;
+      }
+
       /* ── the room, exactly as room.js lays it out ──────────────── */
       const pathData = (pts) =>
         pts.map((p, i) => `${i ? "L" : "M"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
@@ -251,6 +279,13 @@
         const { a, b, c, d, e, f } = scene.door.matrix;
         doorImage.style.width = `${scene.door.natural.width}px`;
         doorImage.style.transform = `matrix(${a},${b},${c},${d},${e},${f})`;
+
+        doorway.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
+        doorway.style.setProperty("--seam-weight", scene.inkWeight.toFixed(2));
+        const opening = openingPath(scene);
+        doorPart("hole").setAttribute("d", opening);
+        doorPart("clip").setAttribute("d", opening);
+        drawDoor();
 
         const dpr = Math.min(window.devicePixelRatio || 1, 2);
         canvas.width = Math.round(window.innerWidth * dpr);
@@ -564,6 +599,12 @@
       window.addEventListener("keydown", (event) => {
         if (event.key !== "h" || event.target.tagName === "INPUT" || event.target.tagName === "SELECT") return;
         setCollapsed(!panel.classList.contains("collapsed"));
+      });
+
+      doorSlider.value = doorAngle;
+      doorSlider.addEventListener("input", () => {
+        doorAngle = Number(doorSlider.value);
+        drawDoor();
       });
 
       const reachInput = document.getElementById("reach");

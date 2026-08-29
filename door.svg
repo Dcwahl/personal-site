@@ -1,9 +1,32 @@
-<svg width="151" height="559" viewBox="0 0 151 559" fill="none" xmlns="http://www.w3.org/2000/svg">
-<path d="M0.5 31.9893L150.5 0.489334" stroke="black"/>
-<path d="M0.5 529.489V31.9893" stroke="black"/>
-<path d="M150.5 558.989V0.489334" stroke="black"/>
-<path d="M0.5 31.9893L21.5 40.4893" stroke="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M150.648 4.96687L42 38.8565V524.238L150.641 556.01L150.389 556.977L21.3887 527.558L21.4004 527.504L0.55957 529.985L0.44043 528.993L21 526.545V40.4893H21.5L21.3818 40.004L82.8818 25.004L82.8936 25.0528L150.352 4.0118L150.648 4.96687ZM22 40.8809V526.67L134.449 552.316L41.0059 524.989H41V524.987L40.9355 524.969L41 524.748V38.4893H41.5L41.3516 38.0118L68.5488 29.5274L22 40.8809Z" fill="black"/>
-<path fill-rule="evenodd" clip-rule="evenodd" d="M150.648 4.96687L42 38.8565V524.238L150.641 556.01L150.389 556.977L21.3887 527.558L21.4004 527.504L0.55957 529.985L0.44043 528.993L21 526.545V40.4893H21.5L21.3818 40.004L82.8818 25.004L82.8936 25.0528L150.352 4.0118L150.648 4.96687ZM22 40.8809V526.67L134.449 552.316L41.0059 524.989H41V524.987L40.9355 524.969L41 524.748V38.4893H41.5L41.3516 38.0118L68.5488 29.5274L22 40.8809Z" fill="black" fill-opacity="0.2"/>
-<path d="M22 40.8809V526.67L134.449 552.316L41.0059 524.989H41V524.987L40.9355 524.969L41 524.748V38.4893H41.5L41.3516 38.0118L68.5488 29.5274L22 40.8809Z" fill="#CD9268"/>
+<svg width="151" height="559" viewBox="0 0 151 559" fill="none" stroke="black" stroke-width="1" xmlns="http://www.w3.org/2000/svg">
+<!--
+  The door frame only. The swinging panel and the space beyond it are drawn by
+  door.js through the room's camera, since they have to move; this file is the
+  part that is nailed to the wall.
+
+  Redrawn as real strokes. The Figma export had run Outline Stroke, which turns
+  every line into a thin filled sliver: the weight could not be changed without
+  redrawing the geometry, and the panel's edges were welded into the same shape
+  as the frame's, so there was no panel to separate. The art is entirely
+  straight lines, so nothing was lost in the round trip.
+
+  The two anchors scene.js places the door by - (0.5, 529.489) and
+  (150.5, 558.989) - are the ends of the outer jamb strokes and are unchanged.
+-->
+
+<!-- The opening in the face of the wall. -->
+<path d="M0.5 31.9893L150.5 0.489334"/>
+<path d="M0.5 31.9893V529.489"/>
+<path d="M150.5 0.489334V558.989"/>
+<path d="M0.5 529.489L21.5 527.12L150.5 556.5"/>
+
+<!--
+  The wall's thickness. Visible across the top and on the far side only: the
+  near side is the one we are looking from. Drawn by eye rather than in
+  perspective - true perspective puts this band at a slope of 0.049 and it
+  reads as nothing at all - so it is deliberately exaggerated.
+-->
+<path d="M0.5 31.9893L21.5 40.4893"/>
+<path d="M21.5 40.4893V527.12"/>
+<path d="M21.5 40.4893L150.5 9.04"/>
 </svg>

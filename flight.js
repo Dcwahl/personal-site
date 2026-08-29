@@ -4,7 +4,7 @@ import {
   trailStyle,
 } from "./trail.js";
 
-const canvas = document.querySelector("canvas");
+const canvas = document.querySelector(".stage--plane");
 const context = canvas.getContext("2d");
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 

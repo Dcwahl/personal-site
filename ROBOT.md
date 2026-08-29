@@ -7,23 +7,62 @@ Branch **`robot`**. `main` is untouched.
 
 ## Where it stands
 
-Working end to end: the robot stands in the doorway, walks an arc out onto the
-floor, arrives facing the camera on a feet-together beat, and the route sizes
-itself to the viewport. All driveable from `experiments/tools/robot-tuner.html`.
+Integrated into the site, end to end: click **about**, the door opens to reveal
+the robot standing behind it, he walks an arc out onto the floor, raises his
+arms once clear of the doorway, closes the door behind him, and arrives facing
+the camera on a feet-together, upright beat. The route and cadence size
+themselves to the viewport.
 
-Not built: the door opening, the paper it presents, what the arms do, the
-shuffle gait, and any integration with the actual page.
+Not built: the paper or actual about content he presents, and the shuffle gait.
+The interaction still needs a proper accessibility and repeat-visit pass.
 
 | File | Role |
 | --- | --- |
 | `camera.js` | The room's 3D camera, recovered from the existing art |
 | `robot.js` | Parametric robot, gait, and the line renderer |
 | `walk.js` | Choreography: the route out of the door and the turn |
+| `door.js` | Projects the swinging door panel through the room camera |
+| `about.js` | Site choreography: reveal, walk, door close, and settle |
 | `experiments/tools/robot-tuner.html` | Live control of every parameter |
 
 Serve with `python3 -m http.server 4173` and open
 <http://127.0.0.1:4173/experiments/tools/robot-tuner.html>.
 Press **walk**. Press **h** to collapse the panel. `?preset=…&play=1` also works.
+
+On the site, `?door=40` holds the door at a chosen angle and `?about=0.4`
+holds the robot four tenths of the way along the walk. Those are inspection
+hooks for screenshots, not public controls.
+
+## Site integration
+
+This was built in the uncommitted integration pass after the gait and route
+were settled.
+
+- `door.svg` is now the fixed frame only. Its Figma outlined strokes were
+  redrawn as real SVG strokes, the duplicate translucent path was removed, and
+  the threshold was straightened between the two placement anchors.
+- `door.js` reconstructs the panel as a rectangle in room space and projects it
+  through `camera.js`. The fitted top corners agree with the original ink to
+  within 0.53 art units. The panel rests at 13.05°, opens to 85°, and disappears
+  behind the wall once it reaches the solved edge-on angle.
+- `room.js` owns the door angle and swing. It draws the opening, clips the panel
+  to it, responds to reduced motion, and emits `room:layout` after resize so the
+  robot can stay registered to the same scene.
+- The page has separate robot and plane canvases. `flight.js` clears its canvas
+  every frame, so sharing one would erase the robot; their order also keeps the
+  plane in front when their paths cross.
+- `about.js` is deliberately choreography only. It opens the door, reveals the
+  robot through the widening gap, holds a short beat, ramps into the gait,
+  raises the arms after he clears the frame, closes the door 20% into the walk,
+  and ramps the final lean back to upright.
+- Clicking **about** starts the sequence and clicking again resets it. Loading
+  `#about` starts it directly. Reduced motion skips to the arrived pose with the
+  door open.
+
+The reveal clips the robot to the opening minus the visible panel. That is a
+small staging cheat—the robot stands at the wall plane rather than physically
+behind the door—but it makes the moving panel uncover him without introducing
+another depth layer.
 
 ## Numbers that were solved, not chosen
 
@@ -85,6 +124,12 @@ gait.
   (a cap on size, not position), cadence 2.6-4.4 steps/s, duration floats
   2.3-5.9s. See "Fitting the viewport".
 - Resize mid-walk: **freeze the route** once walking; replan freely before.
+- Door: **project a real swinging rectangle**, not a 2D squash. It is fitted to
+  the old panel art and clipped to the opening once it passes behind the wall.
+- Doorway clearance: **arms down, then raise them once clear**. This turns the
+  width problem into a readable choreography beat.
+- Start/stop lean: **scale the rendered rock**, without rebuilding the memoised
+  gait table every frame. This keeps both stationary poses upright.
 - Variants are **presets, never replacements**. New shape parameters default to
   0 so they reproduce the plain box, and nothing has to be deleted to explore.
 
@@ -249,14 +294,12 @@ for — there is no longer a turn beat that needs a different gait.
 
 ### Smaller things
 
-- **Arms are unresolved.** Parked deliberately. They currently hold static at
-  `armRaise` 42°, which is also what makes it too wide for the door. Lowering
-  them in the doorway and raising them once clear would fix the clearance and
-  give a beat on the way out.
 - The chest panel competes with the screen face; BMO has a d-pad and buttons
   there.
 - The key overlaps the torso silhouette at near-side angles.
-- The walk must be skippable, deep-linkable via `#about`, and respect
-  `prefers-reduced-motion` — the site already does for the plane. Even 5s is a
-  long gate on a second visit.
+- There is still no about content or paper reveal after the entrance.
+- The current second click resets the sequence, `#about` starts it on load, and
+  reduced motion jumps to the end state. Revisit those semantics with the real
+  content in place: even 5s is a long gate on a second visit, and changing the
+  URL hash on click may be desirable.
 - `favicon.ico` 404s in the tuner. Pre-existing, already in `TODO.md`.

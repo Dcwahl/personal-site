@@ -21,6 +21,18 @@
       </header>
 
       <div class="room" aria-hidden="true">
+        <!--
+          Drawn before the door art so the frame's ink stays on top of the
+          opening it bounds. The panel swings behind the wall as it opens, so
+          it is clipped to the opening rather than hidden by hand.
+        -->
+        <svg class="room__doorway">
+          <defs>
+            <clipPath id="doorway-clip"><path data-door="clip" /></clipPath>
+          </defs>
+          <path class="doorway__beyond" data-door="hole" />
+          <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
+        </svg>
         <img class="room__door" src="door.svg" alt="" />
         <svg class="room__seams" preserveAspectRatio="none">
           <path data-seam="wallCorner" />
@@ -30,10 +42,18 @@
         </svg>
       </div>
 
-      <canvas aria-hidden="true"></canvas>
+      <!--
+        Two layers. flight.js clears its whole canvas every frame, so the robot
+        cannot share it. The robot is drawn first, which puts the plane in
+        front of him - it is crossing the room, he is standing at the back of
+        it.
+      -->
+      <canvas class="stage stage--robot" aria-hidden="true"></canvas>
+      <canvas class="stage stage--plane" aria-hidden="true"></canvas>
     </main>
 
     <script type="module" src="room.js"></script>
     <script type="module" src="flight.js"></script>
+    <script type="module" src="about.js"></script>
   </body>
 </html>

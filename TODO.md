@@ -21,13 +21,16 @@ follows from `DOOR_PLACEMENT`.
 
 ## About page
 
-- [ ] It does not exist. `href="#about"` in the masthead targets nothing, so the
-      site's only link is currently dead.
+- [x] The visual entrance exists: clicking **about** opens the door, reveals the
+      robot, and walks him to centre frame. Loading `#about` starts it directly;
+      reduced motion jumps to the arrived pose.
 - [ ] Needs actual content — bio, contact. Contact lives here rather than as its
       own nav item; if other work gets hosted it goes under "selected work".
-- [ ] Wants its own visual gimmick, to sit alongside the room without repeating
-      it. Undecided. The room's paper-plane-crossing-a-space idea sets the tone:
-      quiet, hand-drawn, one moving element.
+- [ ] Decide how the robot presents that content. The entrance is now the visual
+      gimmick; the unresolved part is the paper/content reveal after he arrives.
+- [ ] Revisit repeat/skip behavior once content exists. A second click currently
+      resets the sequence, but a returning visitor should not have to wait
+      through the full entrance to reach the bio.
 
 ## Before/around publishing
 
@@ -49,7 +52,7 @@ follows from `DOOR_PLACEMENT`.
 
 ## Art
 
-- [ ] **Notch in the floor seam at the door's near jamb.** The two anchor
+- [x] **Notch in the floor seam at the door's near jamb.** The two anchor
       corners land on the floor line at 0.00px, so placement is correct; the
       threshold *between* them is not the straight line through them. Measured
       against the floor line at 1440x900:
@@ -66,14 +69,13 @@ follows from `DOOR_PLACEMENT`.
       Their slope happens to match the floor almost exactly (0.19667 vs
       0.19754), which is why it measures perfectly and still looks wrong. The
       original PNG trace has no such rise, so it entered during the Figma
-      trace. Fix in the art: make the threshold one straight segment between
-      the two outer corners, deleting the kink vertex at x=21.
+      trace. Fixed by redrawing the threshold between the placement anchors.
 
-- [ ] Two paths in `door.svg` are filled outlines rather than strokes (Figma's
+- [x] Two paths in `door.svg` were filled outlines rather than strokes (Figma's
       Outline Stroke), so the door's ink weight can't be retuned independently
       of its geometry. Everything landed at ~1px so it's self-consistent; only
-      worth redoing if the weight needs to change. There is also a stray
-      duplicate path at `fill-opacity="0.2"`.
+      worth redoing if the weight needs to change. Redrawn as real strokes; the
+      stray duplicate at `fill-opacity="0.2"` was removed at the same time.
 - [ ] The plane's 3D model doesn't match the mockup's dart — wing sweep differs
       and the trailing edge sits further back in the drawing. Cosmetic.
 - [ ] Not built from the mockup: the books by the door, the `01 / 02 / 03 / 04`
