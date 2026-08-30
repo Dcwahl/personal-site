@@ -56,7 +56,8 @@ were settled.
 - `about.js` is deliberately choreography only. It opens the door onto an empty
   doorway, holds a short beat, starts the gait behind the wall, clips the entry
   to the real aperture, raises the arms after he clears the frame, closes the
-  door 20% into the visible room walk, and ramps the final lean back to upright.
+  door 20% into the visible room walk, and catches the final lean back to
+  upright in 0.2 seconds.
 - Clicking **about** starts the sequence and clicking again resets it. Loading
   `#about` starts it directly. Reduced motion skips to the arrived pose with the
   door open.
@@ -123,7 +124,8 @@ gait.
   25s was honest physics; a small toy really does need 30 steps to cross a room.
 - Arrival: **arc to camera**, not a turn on the spot. `doorRoute`'s last handle
   is aimed at the camera, so the path's own tangent delivers the heading.
-- Settle: **quantise the route to whole steps**. No amplitude decay was built.
+- Settle: **quantise the route to whole steps**, then quickly scale the rendered
+  rock to zero after the final footfall.
 - Route: **reactive reach and reactive cadence**, both clamped. Reach 0.3-1.25
   (a cap on size, not position), cadence 2.6-4.4 steps/s, duration floats
   2.3-5.9s. See "Fitting the viewport".
@@ -175,9 +177,10 @@ phase always on x.25 or x.75 and `legAngle` exactly 0 — feet together.
 
 The destination moves by at most half a step to get there, a few pixels.
 
-This is the whole settle. Nothing decays, so nothing has to be kept out of the
-memoised `gaitTable`. The robot reads as having stopped rather than as having run
-out of animation because its last footfall lands on the beat.
+This supplies the positional stop. The final footfall lands on the beat rather
+than simply running out of animation; `about.js` then scales only the rendered
+rock to zero with a 0.2-second ease-out. The underlying full-rock pose remains
+the route source, so the memoised `gaitTable` is never rebuilt during the catch.
 
 `START_PHASE` is 0.25 for the same reason: legs together, so the robot is
 standing behind the wall before it moves. `routePose` measures distance from

@@ -42,8 +42,8 @@ const TIMING = {
   beat: 0.2,
   /** Leaning from upright into the walking rock, before the first step. */
   windUp: 0.3,
-  /** Rocking to a standstill after the last one. */
-  settle: 0.5,
+  /** A quick clockwork catch after the final footfall. */
+  settle: 0.2,
   /** How far along the visible room walk the door starts closing, 0..1. */
   shutAt: 0.2,
   /** How far along the visible room walk his arms finish coming up, 0..1. */
@@ -224,11 +224,13 @@ export function runAbout() {
             closeDoor();
           }
         } else {
-          // Arrived. Feet are together; let the lean run out of him.
+          // Arrived. Feet are together; snap most of the lean out immediately,
+          // then soften the last few degrees instead of drifting into place.
           const over = walked - (finish - START_PHASE) / (plan.cadence / 2);
-          const rock = Math.max(0, 1 - over / TIMING.settle);
+          const settle = Math.min(1, Math.max(0, over / TIMING.settle));
+          const rock = (1 - settle) ** 2;
           drawRobotAt(finish, { rock });
-          if (rock === 0) {
+          if (settle === 1) {
             running = { done: true };
             return;
           }
