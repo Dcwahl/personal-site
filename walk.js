@@ -2,8 +2,8 @@
  * The robot's route across the room.
  *
  * Kept apart from `robot.js`, which knows how to *be* a robot but nothing about
- * where it is going. This file owns the choreography: the path out of the
- * doorway, the heading along it, and how it arrives facing the viewer.
+ * where it is going. This file owns the choreography: the approach from behind
+ * the doorway, the path into the room, and how it arrives facing the viewer.
  *
  * Distance along the route is spent, never set. It comes from `distanceWalked`,
  * which is itself solved from the gait, so the robot covers ground at exactly
@@ -44,8 +44,8 @@ function aimedHandle(to, length) {
 /**
  * Control points for the walk, in room coordinates.
  *
- * It leaves the doorway square to the wall, because that is the only way out of
- * a door, then curves toward the middle of the floor.
+ * It approaches and leaves the doorway square to the wall, because that is the
+ * only way through a door, then curves toward the middle of the floor.
  *
  * Both handles scale with `reach`. That keeps the curve's *shape* fixed as the
  * route shortens instead of letting it degenerate at one end: a handle that
@@ -54,9 +54,13 @@ function aimedHandle(to, length) {
  * last two steps as a hook. Scaled, the turn stays monotone and peaks around
  * 6 degrees per step at every length worth using.
  */
-export function doorRoute(reach = 1, { arrive = "camera" } = {}) {
+export function doorRoute(
+  reach = 1,
+  { arrive = "camera", entryDistance = 0 } = {},
+) {
   const { nearJamb, farJamb } = doorFootprint();
   const threshold = (nearJamb + farJamb) / 2;
+  const from = { x: threshold, z: 0 };
 
   /* `reach` slides the destination back toward the doorway. A small toy with
    * short legs genuinely needs a lot of steps to cross a whole room, so how
@@ -67,7 +71,13 @@ export function doorRoute(reach = 1, { arrive = "camera" } = {}) {
   };
 
   return {
-    from: { x: threshold, z: 0 },
+    /* Optional straight approach from behind the wall. Its heading is the same
+     * as the cubic's first tangent, so the two pieces join without a turn. */
+    entry:
+      entryDistance > 0
+        ? { from: { x: threshold, z: -entryDistance }, to: from }
+        : null,
+    from,
     control1: { x: threshold, z: Math.max(0.5, 1.35 * reach) },
     // "wall" is the original arrival: square to the room, turn on the spot
     // afterwards. Kept so the two can be compared rather than replaced.
@@ -86,7 +96,7 @@ const cubic = (a, b, c, d, t) => {
 };
 
 /**
- * Arc-length parameterise the curve.
+ * Arc-length parameterise the straight entry and curve as one route.
  *
  * A Bezier's parameter is not distance — it runs fast through the straight
  * stretches and slow round the bend — so walking at constant t would change
@@ -107,11 +117,18 @@ export function buildRoute(spec = doorRoute(), samples = 600) {
     lengths.push(lengths[i - 1] + Math.hypot(here.x - previous.x, here.z - previous.z));
     previous = here;
   }
-  const length = lengths[samples];
+  const curveLength = lengths[samples];
+  const entryLength = spec.entry
+    ? Math.hypot(
+        spec.entry.to.x - spec.entry.from.x,
+        spec.entry.to.z - spec.entry.from.z,
+      )
+    : 0;
+  const length = entryLength + curveLength;
 
   const tAt = (distance) => {
     if (distance <= 0) return 0;
-    if (distance >= length) return 1;
+    if (distance >= curveLength) return 1;
     let low = 0;
     let high = samples;
     while (high - low > 1) {
@@ -124,7 +141,18 @@ export function buildRoute(spec = doorRoute(), samples = 600) {
   };
 
   const at = (distance) => {
-    const t = tAt(distance);
+    if (spec.entry && distance < entryLength) {
+      const along = Math.max(0, distance) / entryLength;
+      const dx = spec.entry.to.x - spec.entry.from.x;
+      const dz = spec.entry.to.z - spec.entry.from.z;
+      return {
+        x: spec.entry.from.x + dx * along,
+        z: spec.entry.from.z + dz * along,
+        heading: (Math.atan2(dz, dx) * 180) / Math.PI,
+      };
+    }
+
+    const t = tAt(distance - entryLength);
     const here = point(t);
     // Heading comes off the path itself, the way flight.js reads the plane's
     // attitude from its own trajectory rather than storing it separately.
@@ -137,7 +165,7 @@ export function buildRoute(spec = doorRoute(), samples = 600) {
     };
   };
 
-  return { at, length, point, spec };
+  return { at, length, entryLength, curveLength, point, spec };
 }
 
 /* ── landing on the beat ──────────────────────────────────────────── */
@@ -286,13 +314,24 @@ export function reachForScreenX(scene, targetX, options = {}) {
  * by construction, and two steps make a cycle, so the cycles cancel.
  */
 export function planRoute(robot, scene, targetX, options = {}) {
-  const { seconds = TARGET_SECONDS, snap = true } = options;
+  const { seconds = TARGET_SECONDS, snap = true, entrySteps = 0 } = options;
+  const routeOptions = {
+    ...options,
+    entryDistance:
+      options.entryDistance ?? entrySteps * stepLength(robot),
+  };
 
-  const wanted = reachForScreenX(scene, targetX, { ...options, robot });
+  const wanted = reachForScreenX(scene, targetX, {
+    ...routeOptions,
+    robot,
+  });
   const reach = snap
-    ? quantiseReach(robot, wanted, { ...options, maxReach: REACH_LIMITS.max })
+    ? quantiseReach(robot, wanted, {
+        ...routeOptions,
+        maxReach: REACH_LIMITS.max,
+      })
     : wanted;
-  const route = buildRoute(doorRoute(reach, options));
+  const route = buildRoute(doorRoute(reach, routeOptions));
   const steps = Math.round(route.length / stepLength(robot));
   const cadence = clamp(steps / seconds, CADENCE_LIMITS.min, CADENCE_LIMITS.max);
 
@@ -313,9 +352,9 @@ export function planRoute(robot, scene, targetX, options = {}) {
 /**
  * The phase the walk starts from.
  *
- * 0.25 is where `cos` puts the legs together, so the robot is standing in the
- * open doorway before it moves and lands standing when it arrives. Starting at
- * 0 instead would have it appear mid-straddle.
+ * 0.25 is where `cos` puts the legs together, so the robot is standing behind
+ * the wall before it moves and lands standing when it arrives. Starting at 0
+ * instead would have it appear mid-straddle.
  */
 export const START_PHASE = 0.25;
 

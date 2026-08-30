@@ -7,11 +7,11 @@ Branch **`robot`**. `main` is untouched.
 
 ## Where it stands
 
-Integrated into the site, end to end: click **about**, the door opens to reveal
-the robot standing behind it, he walks an arc out onto the floor, raises his
-arms once clear of the doorway, closes the door behind him, and arrives facing
-the camera on a feet-together, upright beat. The route and cadence size
-themselves to the viewport.
+Integrated into the site, end to end: click **about**, the door opens onto an
+empty doorway, the robot walks into view from behind the far jamb and continues
+on an arc across the floor, raises his arms once clear of the doorway, closes
+the door behind him, and arrives facing the camera on a feet-together, upright
+beat. The route and cadence size themselves to the viewport.
 
 Not built: the paper or actual about content he presents, and the shuffle gait.
 The interaction still needs a proper accessibility and repeat-visit pass.
@@ -20,7 +20,7 @@ The interaction still needs a proper accessibility and repeat-visit pass.
 | --- | --- |
 | `camera.js` | The room's 3D camera, recovered from the existing art |
 | `robot.js` | Parametric robot, gait, and the line renderer |
-| `walk.js` | Choreography: the route out of the door and the turn |
+| `walk.js` | Choreography: the route from behind the door through the turn |
 | `door.js` | Projects the swinging door panel through the room camera |
 | `about.js` | Site choreography: reveal, walk, door close, and settle |
 | `experiments/tools/robot-tuner.html` | Live control of every parameter |
@@ -30,8 +30,10 @@ Serve with `python3 -m http.server 4173` and open
 Press **walk**. Press **h** to collapse the panel. `?preset=…&play=1` also works.
 
 On the site, `?door=40` holds the door at a chosen angle and `?about=0.4`
-holds the robot four tenths of the way along the walk. Those are inspection
-hooks for screenshots, not public controls.
+holds the robot four tenths of the way along the walk. `?entry=0` holds the
+actual start behind the far jamb, `?entry=0.35` holds its first readable peek,
+and `?entry=0&xray=1` shows the otherwise occluded starting pose. Those are
+inspection hooks for screenshots, not public controls.
 
 ## Site integration
 
@@ -51,18 +53,20 @@ were settled.
 - The page has separate robot and plane canvases. `flight.js` clears its canvas
   every frame, so sharing one would erase the robot; their order also keeps the
   plane in front when their paths cross.
-- `about.js` is deliberately choreography only. It opens the door, reveals the
-  robot through the widening gap, holds a short beat, ramps into the gait,
-  raises the arms after he clears the frame, closes the door 20% into the walk,
-  and ramps the final lean back to upright.
+- `about.js` is deliberately choreography only. It opens the door onto an empty
+  doorway, holds a short beat, starts the gait behind the wall, clips the entry
+  to the real aperture, raises the arms after he clears the frame, closes the
+  door 20% into the visible room walk, and ramps the final lean back to upright.
 - Clicking **about** starts the sequence and clicking again resets it. Loading
   `#about` starts it directly. Reduced motion skips to the arrived pose with the
   door open.
 
-The reveal clips the robot to the opening minus the visible panel. That is a
-small staging cheat—the robot stands at the wall plane rather than physically
-behind the door—but it makes the moving panel uncover him without introducing
-another depth layer.
+The entry is a straight 3.4-step segment behind the wall, joined tangent to the
+existing curve at the threshold. While he is behind the threshold the robot is
+clipped to the opening minus the visible panel, so only the portion that could
+really be seen through the aperture is drawn. Because that segment participates
+in the same arc-length route, the gait does not restart or change speed at the
+jamb.
 
 ## Numbers that were solved, not chosen
 
@@ -176,7 +180,7 @@ memoised `gaitTable`. The robot reads as having stopped rather than as having ru
 out of animation because its last footfall lands on the beat.
 
 `START_PHASE` is 0.25 for the same reason: legs together, so the robot is
-standing in the open doorway before it moves. `routePose` measures distance from
+standing behind the wall before it moves. `routePose` measures distance from
 that phase rather than from zero, which is what makes both ends land clean.
 
 ### Resizing mid-walk

@@ -1,6 +1,7 @@
 /**
- * The about sequence: the door opens, the robot is standing there, he walks
- * out to the middle of the screen.
+ * The about sequence: the door opens onto an empty doorway, the robot walks
+ * into view from behind the far jamb, then continues to the middle of the
+ * screen.
  *
  * Everything hard here was already solved elsewhere and is only being called:
  * `planRoute` sizes the walk to the viewport and hands back the route, the step
@@ -13,7 +14,12 @@ import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./roo
 import { DOOR_PANEL, openingPath, panelPath } from "./door.js";
 import { mockupToScreen } from "./camera.js";
 import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "./robot.js";
-import { planRoute, routePose, routeCycles, START_PHASE } from "./walk.js";
+import {
+  planRoute,
+  routePose,
+  routeCycles,
+  START_PHASE,
+} from "./walk.js";
 
 const canvas = document.querySelector(".stage--robot");
 const context = canvas.getContext("2d");
@@ -24,19 +30,23 @@ const stillFrames = matchMedia("(prefers-reduced-motion: reduce)");
  * the room takes about five seconds instead of an honest twenty-five. */
 const params = { ...robotDefaults, ...robotPresets["D mild"] };
 
+/* The entrance starts 3.4 steps behind the threshold. That is deep
+ * enough for the oblique jamb to hide him completely, while keeping the walk
+ * into view under a second at the quicker viewport cadences. */
+const ENTRY_STEPS = 3.4;
+
 const TIMING = {
   /** Seconds the door takes to swing. Matches room.js's default. */
   door: 1.1,
-  /** Beat between the door finishing and his first step. He is a toy; a moment
-   * of standing there doing nothing is the joke. */
-  beat: 0.45,
+  /** Tiny beat on the empty open doorway before he walks into view. */
+  beat: 0.2,
   /** Leaning from upright into the walking rock, before the first step. */
   windUp: 0.3,
   /** Rocking to a standstill after the last one. */
   settle: 0.5,
-  /** How far along the walk the door starts closing behind him, 0..1. */
+  /** How far along the visible room walk the door starts closing, 0..1. */
   shutAt: 0.2,
-  /** How far along the walk his arms finish coming up, 0..1. */
+  /** How far along the visible room walk his arms finish coming up, 0..1. */
   armsBy: 0.12,
 };
 
@@ -50,7 +60,9 @@ function rebuildPlan() {
   if (!scene) return;
   /* Aimed at the middle of the window. The destination is a floor point and the
    * room's camera has no tilt, so centring it centres him. */
-  plan = planRoute(buildRobot(params), scene, window.innerWidth / 2);
+  plan = planRoute(buildRobot(params), scene, window.innerWidth / 2, {
+    entrySteps: ENTRY_STEPS,
+  });
 }
 
 function resizeCanvas() {
@@ -67,13 +79,9 @@ function resizeCanvas() {
  *   still in the doorway.
  *
  *   Clipping to the opening alone does not hide him: the shut panel fills the
- *   opening, and the canvas sits above the room, so he would be drawn straight
- *   over the closed door and there would be no reveal at all. Strictly he *is*
- *   in front of the panel — he stands at the wall plane and it swings away
- *   behind — so hiding him behind it is a lie, but it is the only one available
- *   short of moving him back into the dark, and it produces exactly the effect:
- *   the panel retracts and uncovers him. Released on his first step, by which
- *   point he is walking out of the opening and clipping him would cut him off.
+ *   opening, and the canvas sits above the room, so he would otherwise draw
+ *   straight over the door. While the route is behind the threshold, this gap
+ *   is the portion of the real doorway through which he can actually be seen.
  */
 /**
  * @param rock 0..1 scale on the gait's lean, for the two moments he is not
@@ -102,7 +110,10 @@ function resizeCanvas() {
  * lower them in the doorway, raise them once clear — and it is free, because
  * `armRaise` is not part of the `gaitTable` cache key the way `rockAngle` is.
  */
-function drawRobotAt(phase, { clip = false, rock = 1, arms = 1 } = {}) {
+function drawRobotAt(
+  phase,
+  { clip = false, rock = 1, arms = 1, alpha = 1 } = {},
+) {
   const scene = getScene();
   context.clearRect(0, 0, window.innerWidth, window.innerHeight);
   if (!scene || !plan) return;
@@ -117,18 +128,38 @@ function drawRobotAt(phase, { clip = false, rock = 1, arms = 1 } = {}) {
   });
   const quads = placeRobot(robot, pose);
 
+  if (clip || alpha !== 1) context.save();
   if (clip) {
     /* Even-odd across the two: inside both counts twice and drops out, which
-     * leaves the opening with the panel punched out of it. */
-    const gap = new Path2D(openingPath(scene));
+     * leaves the opening with the panel punched out of it. Intersect with the
+     * opening first: once the panel swings past edge-on its projected polygon
+     * sits outside the doorway, where it must not become a second clip island. */
+    const opening = new Path2D(openingPath(scene));
+    const gap = new Path2D(opening);
     gap.addPath(new Path2D(panelPath(scene, getDoorAngle())));
-    context.save();
+    context.clip(opening);
     context.clip(gap, "evenodd");
   }
+  context.globalAlpha = alpha;
   drawRobot(context, quads, mockupToScreen(scene), {
     weight: Math.max(1, scene.scale * 1.35),
   });
-  if (clip) context.restore();
+  if (clip || alpha !== 1) context.restore();
+}
+
+/**
+ * Hold the real walk-in for inspection. `along` is 0 behind the wall and 1 at
+ * the threshold, matching the opening portion of the live route exactly.
+ */
+function drawEntryAt(along, { xray = false } = {}) {
+  const phase = START_PHASE + (ENTRY_STEPS / 2) * along;
+
+  drawRobotAt(phase, {
+    clip: !xray,
+    rock: along === 0 ? 0 : 1,
+    arms: 0,
+    alpha: xray ? 0.48 : 1,
+  });
 }
 
 const clear = () => context.clearRect(0, 0, window.innerWidth, window.innerHeight);
@@ -142,6 +173,7 @@ export function runAbout() {
 
   const robot = buildRobot(params);
   const finish = routeCycles(robot, plan.route);
+  const entryFinish = START_PHASE + ENTRY_STEPS / 2;
 
   if (stillFrames.matches) {
     /* No motion: show the end state. The door is open and he has arrived,
@@ -164,19 +196,30 @@ export function runAbout() {
       const walked = elapsed - waited - TIMING.windUp;
 
       if (elapsed < waited) {
-        // Upright in the doorway while the panel swings off him.
-        drawRobotAt(START_PHASE, { clip: elapsed < TIMING.door, rock: 0, arms: 0 });
+        // He is waiting behind the wall while the door opens onto empty space.
+        drawRobotAt(START_PHASE, { clip: true, rock: 0, arms: 0 });
       } else if (walked <= 0) {
-        // Leaning into the gait, still on the spot. A wind-up toy taking up.
-        drawRobotAt(START_PHASE, { rock: (elapsed - waited) / TIMING.windUp, arms: 0 });
+        // Lean into the gait out of sight, then enter already walking.
+        drawRobotAt(START_PHASE, {
+          clip: true,
+          rock: (elapsed - waited) / TIMING.windUp,
+          arms: 0,
+        });
       } else {
         // Two steps make a cycle, so cadence halves into cycles per second.
         const phase = Math.min(finish, START_PHASE + walked * (plan.cadence / 2));
 
-        const along = (phase - START_PHASE) / (finish - START_PHASE);
         if (phase < finish) {
-          drawRobotAt(phase, { arms: Math.min(1, along / TIMING.armsBy) });
-          if (!shut && along >= TIMING.shutAt) {
+          const entering = phase < entryFinish;
+          const outside = Math.max(
+            0,
+            (phase - entryFinish) / (finish - entryFinish),
+          );
+          drawRobotAt(phase, {
+            clip: entering,
+            arms: Math.min(1, outside / TIMING.armsBy),
+          });
+          if (!shut && outside >= TIMING.shutAt) {
             shut = true;
             closeDoor();
           }
@@ -211,7 +254,10 @@ window.addEventListener("room:layout", () => {
    * the route is frozen once he is moving — see "Resizing mid-walk" in
    * ROBOT.md. Before that, rebuild freely. */
   if (!running) rebuildPlan();
-  if (running?.still || running?.done) drawRobotAt(routeCycles(buildRobot(params), plan.route), { rock: 0 });
+  if (running?.entry) drawEntryAt(running.entry.along, running.entry);
+  else if (running?.still || running?.done) {
+    drawRobotAt(routeCycles(buildRobot(params), plan.route), { rock: 0 });
+  }
 });
 
 resizeCanvas();
@@ -228,18 +274,34 @@ if (location.hash === "#about") runAbout();
 /* `?about=0.4` holds a still frame four tenths of the way along the walk, with
  * the door open. The sequence is over in about seven seconds and a headless
  * screenshot lands wherever it lands, so this is the only way to look at a
- * chosen moment of it. `?about=0` is him in the doorway, not yet moving. */
-const held = new URLSearchParams(location.search).get("about");
+ * chosen moment of it. `?about=0` is the hidden starting pose behind the wall. */
+const query = new URLSearchParams(location.search);
+const held = query.get("about");
 if (held !== null && plan) {
   const along = Math.max(0, Math.min(1, Number(held) || 0));
   const finish = routeCycles(buildRobot(params), plan.route);
   // An explicit ?door= wins, so the reveal can be inspected part-open.
-  if (!new URLSearchParams(location.search).has("door")) setDoorAngle(DOOR_PANEL.open);
+  if (!query.has("door")) setDoorAngle(DOOR_PANEL.open);
   running = { done: true };
   const atEnd = along === 0 || along === 1;
+  const entryAlong = ENTRY_STEPS / plan.steps;
+  const outside = Math.max(0, (along - entryAlong) / (1 - entryAlong));
   drawRobotAt(START_PHASE + along * (finish - START_PHASE), {
-    clip: along === 0,
+    clip: along < entryAlong,
     rock: atEnd ? 0 : 1,
-    arms: Math.min(1, along / TIMING.armsBy),
+    arms: Math.min(1, outside / TIMING.armsBy),
   });
+}
+
+/* `?entry=0` holds the real start 3.4 steps behind the threshold;
+ * `?entry=0.35` shows the first peek round the far jamb. At zero the correct
+ * visitor view is an empty doorway, so `&xray=1` draws the occluded robot at
+ * reduced opacity for placement inspection. */
+const heldEntry = query.get("entry");
+if (heldEntry !== null && plan) {
+  const along = Math.max(0, Math.min(1, Number(heldEntry) || 0));
+  const entry = { along, xray: query.get("xray") === "1" };
+  if (!query.has("door")) setDoorAngle(DOOR_PANEL.open);
+  running = { entry };
+  drawEntryAt(along, entry);
 }
