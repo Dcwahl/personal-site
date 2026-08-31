@@ -32,9 +32,7 @@ follows from `DOOR_PLACEMENT`.
 ## Before/around publishing
 
 - [ ] Favicon — none yet.
-- [ ] Debounce `resizeCanvas()`. It calls `buildTrailDots()`, which walks 1,400
-      path samples, and it runs on every resize event — dragging a window edge
-      rebuilds it hundreds of times.
+- [x] Debounce `resizeCanvas()` — settled at 120ms in `flight.js`.
 - [ ] Reduced-motion path (`drawReducedMotionFrame` in `flight.js`) survived the
       trail refactor by inspection but has not been rendered and checked.
 
@@ -78,6 +76,31 @@ follows from `DOOR_PLACEMENT`.
       and the trailing edge sits further back in the drawing. Cosmetic.
 - [ ] Not built from the mockup: the books by the door, the `01 / 02 / 03 / 04`
       counter.
+
+## Plane dynamics
+
+Open question: the current flight reads worse than the old dart study in
+`experiments/paper-plane/`. Measured differences, all in the dart's favour:
+
+| | dart study | current site |
+|---|---|---|
+| oscillations | 2.45–3.30 | 1.15–1.40 |
+| bank | 0.42–0.62 | 0.16–0.24 |
+| yaw | 0.045–0.105 | 0.025–0.060 |
+| wave height | 0.045–0.071 | 0.014–0.022 |
+| 2nd harmonic | 0.12–0.28 | 0.04–0.10 |
+| vertical trend | descends 0.14–0.24 | **climbs** 0.065–0.095 |
+
+Two structural differences beyond the amplitudes:
+
+- The dart has no heading tracking at all. Yaw is pinned at `Math.PI` and it
+  never turns to follow its path. Heading tracking was added to the site to fix
+  an earlier attitude/velocity mismatch and may have overcorrected.
+- Its camera is effectively azimuth 0 with the *opposite* elevation sign, which
+  is why it shows a different face. That is the "rotation away from screen" bias.
+
+- [ ] Tune it in `experiments/tools/plane-tuner.html`, then paste the values
+      into `planeStyle` in `plane.js`.
 
 ## Ideas
 

@@ -3,3 +3,6 @@ node_modules/
 
 # Per-machine Claude Code preferences
 .claude/settings.local.json
+
+# Python bytecode
+__pycache__/

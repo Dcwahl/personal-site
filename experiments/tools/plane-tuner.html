@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Plane tuner</title>
+    <style>
+      :root { --paper: #dac9a4; --ink: #17140f; }
+      body {
+        margin: 0; background: var(--paper); color: var(--ink);
+        font: 13px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif;
+      }
+      canvas { display: block; width: 100%; height: 52vh; }
+      .panel {
+        display: flex; flex-wrap: wrap; gap: 1.1rem 1.6rem;
+        align-items: flex-start;
+        padding: 1rem 1.5rem 1.4rem; background: rgb(23 20 15 / 6%);
+      }
+      fieldset {
+        display: flex; flex-wrap: wrap; gap: 0.5rem 1.2rem;
+        margin: 0; padding: 0.6rem 0.9rem 0.8rem;
+        border: 1px solid rgb(23 20 15 / 18%); border-radius: 4px;
+      }
+      legend {
+        padding: 0 0.35rem; font-size: 11px; letter-spacing: 0.09em;
+        text-transform: uppercase; opacity: 0.62;
+      }
+      label { display: flex; flex-direction: column; gap: 0.1rem; min-width: 10.5rem; }
+      .row { display: flex; align-items: center; gap: 0.45rem; }
+      input[type="range"] { flex: 1; min-width: 6.5rem; }
+      output { font-variant-numeric: tabular-nums; min-width: 3.1rem; text-align: right; }
+      .checks { display: flex; flex-direction: column; gap: 0.4rem; }
+      .checks label { flex-direction: row; align-items: center; gap: 0.4rem; min-width: 0; }
+      .bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+      button {
+        font: inherit; padding: 0.35rem 0.7rem; cursor: pointer;
+        color: inherit; background: transparent;
+        border: 1px solid rgb(23 20 15 / 35%); border-radius: 3px;
+      }
+      button:hover { background: rgb(23 20 15 / 10%); }
+      code {
+        display: block; flex: 1 1 100%; padding: 0.7rem 0.9rem;
+        font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+        line-height: 1.6;
+        background: rgb(23 20 15 / 8%); border-radius: 3px; white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div class="panel" id="panel">
+      <fieldset id="path"><legend>path</legend></fieldset>
+      <fieldset id="attitude"><legend>attitude</legend></fieldset>
+      <fieldset id="irregularity"><legend>irregularity</legend></fieldset>
+      <fieldset id="camera"><legend>camera</legend></fieldset>
+      <fieldset id="render"><legend>render</legend></fieldset>
+      <fieldset>
+        <legend>flight</legend>
+        <div class="checks">
+          <label><input type="checkbox" id="rightToLeft" /> fly right to left</label>
+          <label><input type="checkbox" id="trackHeading" /> track heading</label>
+          <label><input type="checkbox" id="stepEverything" /> step everything</label>
+          <label><input type="checkbox" id="paused" /> pause &amp; scrub</label>
+        </div>
+      </fieldset>
+      <div class="bar">
+        <button data-preset="current">current site</button>
+        <button data-preset="dart">dart experiment</button>
+        <button id="reroll">new seed</button>
+        <button id="copy">copy values</button>
+      </div>
+      <code id="out"></code>
+    </div>
+
+    <script type="module">
+      import {
+        createFlightProfile,
+        drawPlane,
+        getFlightPosition,
+        planeStyle,
+        presets,
+        BUILD,
+      } from "../../plane.js";
+      import { buildTrailDots, drawTrail } from "../../trail.js";
+
+      const flightDuration = 10_800;
+      const trailLifetime = 9_000;
+
+      const groups = {
+        path: [
+          ["oscillations", "oscillations", 0.4, 5, 0.05],
+          ["verticalAmplitude", "wave height", 0, 0.14, 0.002],
+          ["verticalTrend", "climb / descend", -0.35, 0.35, 0.005],
+          ["secondHarmonic", "2nd harmonic", 0, 0.4, 0.01],
+          ["speedPulse", "speed pulse", 0, 0.05, 0.001],
+        ],
+        attitude: [
+          ["bankAmplitude", "bank (roll)", 0, 1.2, 0.01],
+          ["pitchAmplitude", "pitch", 0, 0.6, 0.01],
+          ["yawAmplitude", "yaw", 0, 0.3, 0.005],
+          ["yawOffset", "yaw offset", -3.15, 3.15, 0.05],
+        ],
+        irregularity: [
+          ["irregularity", "aperiodic drift", 0, 1.5, 0.02],
+          ["swoopVariation", "swoop-to-swoop variation", 0, 1, 0.02],
+          ["phaseWander", "period breathing", 0, 2.5, 0.05],
+          ["swoopSkew", "dive/climb skew", -1.2, 1.2, 0.02],
+          ["noiseScale", "noise scale", 0.5, 12, 0.25],
+        ],
+        camera: [
+          ["elevation", "elevation", -1.4, 1.4, 0.01],
+          ["azimuth", "azimuth", -1.4, 1.4, 0.01],
+        ],
+        render: [
+          ["depthAmount", "depth swell", 0, 0.8, 0.01],
+          ["sizeMax", "size", 12, 90, 1],
+          ["rotationFps", "attitude fps (0 = smooth)", 0, 30, 1],
+          ["variance", "flight-to-flight variance", 0, 2, 0.05],
+        ],
+      };
+
+      const canvas = document.getElementById("stage");
+      const context = canvas.getContext("2d");
+      const outputs = new Map();
+      const inputs = new Map();
+      const checks = ["trackHeading", "stepEverything"];
+
+      let viewport = { width: 0, height: 0, scale: 1 };
+      let profile = createFlightProfile(planeStyle.seed);
+      let dots = [];
+      let scrub = 0.5;
+      let startTime = performance.now();
+
+      const pathAt = (progress) =>
+        getFlightPosition(progress, viewport, profile);
+
+      for (const [group, rows] of Object.entries(groups)) {
+        const parent = document.getElementById(group);
+
+        for (const [key, label, min, max, step] of rows) {
+          const wrap = document.createElement("label");
+          wrap.innerHTML =
+            `${label}<span class="row">` +
+            `<input type="range" min="${min}" max="${max}" step="${step}" />` +
+            `<output></output></span>`;
+          parent.append(wrap);
+
+          const input = wrap.querySelector("input");
+          const output = wrap.querySelector("output");
+          inputs.set(key, input);
+          outputs.set(key, output);
+
+          input.addEventListener("input", () => {
+            planeStyle[key] = Number(input.value);
+            // Re-roll on the SAME seed: only the moved value changes, the
+            // flight's phases and bank directions stay put, so the before and
+            // after are actually comparable.
+            rebuild();
+          });
+        }
+      }
+
+      for (const key of checks) {
+        const box = document.getElementById(key);
+        box.addEventListener("change", () => {
+          planeStyle[key] = box.checked;
+          // Heading tracking decides whether the nose is turned to match the
+          // direction of travel, so the path has to be rebuilt with it.
+          rebuild();
+        });
+      }
+
+      const directionBox = document.getElementById("rightToLeft");
+      directionBox.addEventListener("change", () => {
+        planeStyle.direction = directionBox.checked ? -1 : 1;
+        rebuild();
+      });
+
+      const pausedBox = document.getElementById("paused");
+      const scrubWrap = document.createElement("label");
+      scrubWrap.innerHTML =
+        `progress<span class="row">` +
+        `<input type="range" min="0" max="1" step="0.002" value="0.5" />` +
+        `<output>0.50</output></span>`;
+      pausedBox.closest("fieldset").append(scrubWrap);
+      const scrubInput = scrubWrap.querySelector("input");
+      scrubInput.addEventListener("input", () => {
+        scrub = Number(scrubInput.value);
+        scrubWrap.querySelector("output").textContent = scrub.toFixed(2);
+      });
+
+      function rebuild() {
+        profile = createFlightProfile(planeStyle.seed);
+        dots = buildTrailDots(pathAt);
+        sync();
+      }
+
+      function sync() {
+        for (const [key, input] of inputs) {
+          input.value = planeStyle[key];
+          const value = planeStyle[key];
+          outputs.get(key).textContent =
+            Math.abs(value) >= 10 || Number.isInteger(value)
+              ? String(value)
+              : value.toFixed(3);
+        }
+        for (const key of checks) {
+          document.getElementById(key).checked = planeStyle[key];
+        }
+        directionBox.checked = planeStyle.direction < 0;
+        writeOut();
+      }
+
+      function writeOut() {
+        const keys = [
+          ...Object.values(groups).flat().map(([key]) => key),
+          "direction",
+          ...checks,
+        ];
+        document.getElementById("out").textContent = `plane.js ${BUILD}\n` + keys
+          .map((key) => {
+            const value = planeStyle[key];
+            return `${key}: ${typeof value === "number" ? Number(value.toFixed(4)) : value}`;
+          })
+          .join(",  ");
+      }
+
+      function resize() {
+        const ratio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+
+        viewport = { width, height, scale: ratio };
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        context.setTransform(ratio, 0, 0, ratio, 0, 0);
+        dots = buildTrailDots(pathAt);
+      }
+
+      function render(now) {
+        context.clearRect(0, 0, viewport.width, viewport.height);
+
+        const progress = pausedBox.checked
+          ? scrub
+          : ((now - startTime) % flightDuration) / flightDuration;
+        const elapsed = progress * flightDuration;
+        const point = pathAt(progress);
+
+        drawTrail(context, dots, {
+          progress,
+          flightDuration,
+          trailLifetime,
+        });
+        drawPlane(context, {
+          x: point.x,
+          y: point.y,
+          progress,
+          elapsed,
+          profile,
+          viewport,
+          flightDuration,
+        });
+
+        requestAnimationFrame(render);
+      }
+
+      for (const button of document.querySelectorAll("[data-preset]")) {
+        button.addEventListener("click", () => {
+          Object.assign(planeStyle, presets[button.dataset.preset]);
+          rebuild();
+        });
+      }
+
+      document.getElementById("reroll").addEventListener("click", () => {
+        planeStyle.seed = Math.floor(Math.random() * 1e9);
+        startTime = performance.now();
+        rebuild();
+      });
+
+      document.getElementById("copy").addEventListener("click", () => {
+        navigator.clipboard.writeText(
+          document.getElementById("out").textContent,
+        );
+      });
+
+      window.addEventListener("resize", resize);
+      // The tuner shows one flight on repeat rather than the site's spawn
+      // cycle, so there is always a plane on screen to look at.
+      planeStyle.sizeMin = 12;
+      sync();
+      resize();
+      requestAnimationFrame(render);
+    </script>
+  </body>
+</html>

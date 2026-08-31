@@ -21,7 +21,8 @@ The room scene lives at the repository root and *is* the site:
 | `styles.css` | Styling |
 | `scene.js` | Room perspective model, door placement, floor-seam geometry |
 | `room.js` | Applies the scene to the DOM on load and resize |
-| `flight.js` | Paper-plane motion and camera |
+| `flight.js` | Animation loop: flight cycles, trail lifetime, canvas |
+| `plane.js` | The plane's model, motion, attitude, and camera |
 | `trail.js` | The etched trail the plane leaves behind |
 | `door.svg` | The door artwork |
 
@@ -35,6 +36,12 @@ Not part of the site, and excluded from publication:
   trail's mark length, width, spacing, and opacity. It imports the same
   `trail.js` the site uses, so what you tune is what you get. Paste the values
   it prints into `trailStyle` in `trail.js`.
+- <http://localhost:4173/experiments/tools/plane-tuner.html> — sliders for the
+  plane's path, attitude, irregularity, and camera, with presets for the current flight and
+  the old dart study. Re-rolls on a fixed seed, so moving one slider changes
+  only that value and leaves the flight's character alone — the before and
+  after stay comparable. Paste the values it prints into `planeStyle` in
+  `plane.js`.
 - `experiments/tools/perspective-scaffold.svg` — the room's horizon, vanishing
   point, floor seams, and the two points the door's base corners must land on.
   Drop it into Figma as a locked layer to draw new room artwork against.
