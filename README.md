@@ -46,6 +46,10 @@ Not part of the site, and excluded from publication:
 - `experiments/tools/imgprobe/` — pure-Python PNG measuring, plus the headless
   Chrome screenshot recipe. Every constant in `scene.js` was measured out of
   `redesign-mockup.png` with it; needed again for new art. See its README.
+- The robot's own tools — `robot-tuner.html` for the body and gait,
+  `paper-sequence.html` for the about sequence end to end — are documented in
+  `ROBOT.md`, along with every number in `robot.js` and `walk.js` that was
+  solved rather than chosen.
 
 ### Where the numbers came from
 

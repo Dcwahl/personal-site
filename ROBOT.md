@@ -13,8 +13,11 @@ on an arc across the floor, raises his arms once clear of the doorway, closes
 the door behind him, and arrives facing the camera on a feet-together, upright
 beat. The route and cadence size themselves to the viewport.
 
-Not built: the paper or actual about content he presents, and the shuffle gait.
-The interaction still needs a proper accessibility and repeat-visit pass.
+Not built: the shuffle gait, and the about content is a study rather than a
+shipped thing — `experiments/tools/paper-sequence.html` plays the whole
+entrance-to-reading sequence with the sheet in his hands, but nothing of it has
+been wired into `about.js` yet. The interaction still needs a proper
+accessibility and repeat-visit pass.
 
 | File | Role |
 | --- | --- |
@@ -24,10 +27,19 @@ The interaction still needs a proper accessibility and repeat-visit pass.
 | `door.js` | Projects the swinging door panel through the room camera |
 | `about.js` | Site choreography: reveal, walk, door close, and settle |
 | `experiments/tools/robot-tuner.html` | Live control of every parameter |
+| `experiments/tools/paper-sequence.html` | The paper study: the full sequence, end to end |
+| `experiments/tools/paper-probe.html` | The paper study: one static pose, on sliders |
 
 Serve with `python3 -m http.server 4173` and open
 <http://127.0.0.1:4173/experiments/tools/robot-tuner.html>.
 Press **walk**. Press **h** to collapse the panel. `?preset=…&play=1` also works.
+
+`paper-sequence.html` plays on load; click or press space to replay. `?t=3.5`
+renders one deterministic frame (`?t=99` is the final one), and `?near=`,
+`?cadence=`, `?stepAngle=`, `?height=`, `?sheetH=`, `?grip=`, `?armRaise=` and
+`?crease=` are the knobs. Its HUD reports the step count, the walk duration, the
+sheet's width, whether the sheet could be hidden below the frame, the DOM box's
+scale factor, and how far off centre the final composition lands.
 
 On the site, `?door=40` holds the door at a chosen angle and `?about=0.4`
 holds the robot four tenths of the way along the walk. `?entry=0` holds the
@@ -136,8 +148,15 @@ gait.
   width problem into a readable choreography beat.
 - Start/stop lean: **scale the rendered rock**, without rebuilding the memoised
   gait table every frame. This keeps both stationary poses upright.
+- Presenting: **walk him nearly into the lens** rather than enlarging him in
+  place, so the sheet is readable and the crop is the gag. See "The paper".
 - Variants are **presets, never replacements**. New shape parameters default to
   0 so they reproduce the plain box, and nothing has to be deleted to explore.
+  `armReach` is the newest: `armSwing` is a *counter*-swing (the right arm gets
+  its negation, because that is what walking does), so it can never bring both
+  hands together in front. Reaching is a separate motion and needs its own term,
+  added to both shoulders with the same sign. At 0 the arms are exactly where
+  they were, verified pixel-for-pixel on the live `?about=1` frame.
 
 ## Arrival, settled
 
@@ -261,6 +280,101 @@ The residual off-centre is the whole-step snap and nothing else: half a step is
 about 20px on screen at the destination, and every row lands inside that. Losing
 20px of centring to gain a feet-together stop is the right way round.
 
+## The paper
+
+How he presents the about copy. Explored in `paper-sequence.html`; **not
+integrated**. The shape of it is settled, two things are not.
+
+The original idea was that he holds up a sheet. The obstacle was readability:
+at the arrival distance the walk had been tuned for, he is about 350px tall and
+anything he could hold gives roughly **8px type**. No amount of layout fixes
+that.
+
+- **Walk him almost into the lens.** At 2.34 door-heights from the camera the
+  sheet projects **593 x 474px** and the copy sets at **20px**. His feet land at
+  y 1234 in a 900px viewport, so he is cropped at the chest and it is mostly
+  head — which is the joke, and it comes free with the fix.
+
+- **Distance and screen position are two degrees of freedom; `reach` is one.**
+  Pushing `reach` up to enlarge him also slides him sideways past the camera's
+  own z, and `planRoute` then bisects it back to centre, undoing the size. The
+  study aims down the camera's view axis instead and centres by bisecting on
+  the perpendicular. `REACH_LIMITS.max = 1.25` is a composition cap justified by
+  "he arrives taller than the door" — a rule about a robot standing *in* the
+  room, and void for one who comes up to the glass. It will have to be
+  overturned or bypassed when this lands.
+
+- **Centre the composition, not the body.** Same trap as "Arrival, settled", hit
+  again: measuring at `START_PHASE` measures a pose at full rock, and the drawn
+  final frame has the rock scaled to zero. Centring the arms-up, sheet-in-hand,
+  rock-free pose — with a second pass once the step count fixes the finishing
+  phase — takes the composition from 94px off to **0px** (body 9, sheet -4,
+  because the sheet overhangs his arms).
+
+- **The copy is real DOM text, not canvas.** The sheet is a quad in the robot's
+  own geometry, stroked by `drawRobot` like any other part. A `<div>` of HTML
+  sits above the canvas, and each frame a four-point homography (DLT, then
+  Gaussian elimination) maps its rectangle onto the sheet's projected corners
+  and is handed to CSS as `matrix3d`. So the bio stays selectable, searchable
+  and accessible while sitting in the room's perspective.
+
+- **The sheet is rigid, and so is its box.** Both had to be made so, and both
+  had gone wrong the same way — something was being re-derived per frame that
+  should have been fixed once:
+
+  1. The sheet's width came from the live hand positions. `armRaise` swings the
+     arms in the y-z plane, so the hands are furthest apart around 90 degrees
+     and closer at the 140 he finishes on; the paper stretched to 800px
+     mid-lift and shrank back to 593. Paper is rigid. The half-span is now
+     frozen at plan time from the finishing pose — and measured at
+     `rockAngle: 0`, because a body rolled 20 degrees turns y into z and the
+     hands stop being symmetric about the spine.
+  2. The `<div>`'s CSS width was set from the current quad's aspect ratio. Even
+     with a rigid sheet the top edge foreshortens as he tilts it up, so the box
+     was re-laid-out and the copy re-wrapped every frame. It is now sized once
+     and only transformed.
+
+  Horizontal scale across the lift went from `1.82x` at a wildly varying box
+  width to `1.04, 1.02, 1.00`.
+
+- **Size the box in real screen pixels.** A layer under a 3D transform
+  rasterises at its own size and is then scaled as a bitmap, so a 260px box
+  blown up 1.82x rendered the type as a grey smear. The box is now the resting
+  sheet's true pixel size (593 x 474 at 1440x900, 519 x 427 at 1200x800) and
+  the resting scale is exactly **1.00x**. The copy is authored in `em` off a
+  root size set from JS, so it tracks the viewport the way the sheet does.
+
+- **No fade.** "The words shouldn't just appear on the sheet" was solved by
+  deleting the transition: the copy is on the paper from the moment the paper
+  exists, and rides up into frame from below with it.
+
+- **Creases were built and rejected.** Fold lines on the sheet answered where it
+  came from, but bought that with a fold to explain and a fold to animate, and
+  at any alpha that read at 20px type they struck through the lines. Off by
+  default; `?crease=0.13` still draws them. The per-marking `alpha` in
+  `drawRobot` was added for this and is now unused.
+
+### Still open
+
+- **Where the sheet comes from.** He walks in empty-handed and the paper exists
+  in his hands a beat later. Carried at his side the full sheet's top edge sits
+  **393px inside** the frame — it cannot be born off-screen. Measured across
+  distances: 255px in at 2.33, 188px at 1.80, 55px even at 1.28 where he is
+  essentially all head. Only a folded slip at about a fifth of the height
+  (`sheetH` 0.09) clears, by 17px, and folding is out. So this is unanswered:
+  either accept the pop, hand it to him some other way, or reach off-frame.
+
+- **Duration.** 10.35s end to end at cadence 4 and `stepAngle` 27.5 (34 steps,
+  8.50s of it walking). Overlapping the hidden 3.4-step entry with the door
+  swing was free and is already taken. `stepAngle` 34 cuts it to 27 steps and
+  **8.47s**, but that is above the verified stride and has not been re-run
+  against the skate, floor and monotonic-advance checks.
+
+- **Portrait.** At 390px wide the sheet caps at about 85% of the viewport and
+  the type at 9.1px. Landscape carries the copy on the paper; portrait needs
+  either a flatten-to-panel fallback or the separate composition already tabled
+  in `TODO.md`.
+
 ## Open
 
 ### The shuffle gait
@@ -304,7 +418,6 @@ for — there is no longer a turn beat that needs a different gait.
 - The chest panel competes with the screen face; BMO has a d-pad and buttons
   there.
 - The key overlaps the torso silhouette at near-side angles.
-- There is still no about content or paper reveal after the entrance.
 - The current second click resets the sequence, `#about` starts it on load, and
   reduced motion jumps to the end state. Revisit those semantics with the real
   content in place: even 5s is a long gate on a second visit, and changing the

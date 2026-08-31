@@ -1,0 +1,589 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper sequence</title>
+    <link rel="stylesheet" href="../../styles.css" />
+    <style>
+      .hud {
+        position: fixed; z-index: 6; left: 1rem; top: 1rem;
+        font: 12px/1.6 ui-monospace, monospace; white-space: pre;
+        background: rgb(218 201 164 / 90%); padding: 0.5rem 0.7rem;
+        border: 1px solid rgb(23 20 15 / 25%);
+      }
+      .clock { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+      .hint { position: fixed; z-index: 6; left: 1rem; bottom: 1rem;
+        font: 11px/1.6 ui-monospace, monospace; opacity: 0.6; white-space: pre; }
+      .sheet-dom {
+        position: fixed; z-index: 4; top: 0; left: 0;
+        transform-origin: 0 0; pointer-events: none; display: none;
+        /* Set from JS to the box's real on-screen height, so the copy is laid
+           out at the size it is read at. Everything inside is in `em`. */
+        font-size: 11px;
+      }
+      .sheet-dom.on { display: block; }
+      /* Set as a sheet of paper, not as a UI panel: generous margins, a
+         measure that stops well short of the edge, and the label doing the
+         work the masthead's letterspacing does elsewhere on the site. */
+      .sheet-dom__inner {
+        width: 100%; height: 100%;
+        padding: 8% 9%;
+        display: flex; flex-direction: column; justify-content: center;
+        font: 1em/1.75 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+      }
+      .sheet-dom__label {
+        font-size: 0.73em; letter-spacing: 0.18em; text-transform: uppercase;
+        opacity: 0.55; margin: 0 0 1.6em;
+      }
+      .sheet-dom__inner p { margin: 0 0 1.15em; }
+      .sheet-dom__inner p:last-child { margin: 0; }
+      .sheet-dom__sign {
+        margin-top: 1.6em; padding-top: 1.1em;
+        border-top: 0.09em solid rgb(23 20 15 / 22%);
+        align-self: start;
+        padding-right: 3em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="room" aria-hidden="true">
+        <svg class="room__doorway">
+          <defs><clipPath id="doorway-clip"><path data-door="clip" /></clipPath></defs>
+          <path class="doorway__beyond" data-door="hole" />
+          <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
+        </svg>
+        <img class="room__door" src="../../door.svg" alt="" />
+        <svg class="room__seams" preserveAspectRatio="none">
+          <path data-seam="wallCorner" /><path data-seam="leftFloor" />
+          <path data-seam="floorToDoor" /><path data-seam="floorPastDoor" />
+        </svg>
+      </div>
+      <canvas class="stage stage--robot" aria-hidden="true"></canvas>
+      <div class="sheet-dom">
+        <div class="sheet-dom__inner">
+          <p class="sheet-dom__label">About</p>
+          <p>Diego Wahl is a designer working on interfaces, systems, and the
+            occasional paper aeroplane.</p>
+          <p>Previously at somewhere; before that, somewhere else. Currently
+            taking on selected work.</p>
+          <p class="sheet-dom__sign">hello@example.com</p>
+        </div>
+      </div>
+    </main>
+
+    <div class="hud" id="hud"></div>
+    <div class="hint" id="hint"></div>
+
+    <script type="module">
+      import { getScene, setDoorAngle } from "../../room.js";
+      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js";
+      import { mockupToScreen, toCameraSpace, projectCameraSpace, CAMERA_IN_ROOM } from "../../camera.js";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
+      import {
+        buildRoute, doorRoute, stepLength, routePose, headingToCamera, START_PHASE,
+      } from "../../walk.js";
+
+      const canvas = document.querySelector(".stage--robot");
+      const ctx = canvas.getContext("2d");
+      const domSheet = document.querySelector(".sheet-dom");
+      const query = new URLSearchParams(location.search);
+      const num = (name, fallback) => {
+        const v = Number(query.get(name));
+        return query.has(name) && Number.isFinite(v) ? v : fallback;
+      };
+
+      /* ── the knobs worth feeling ─────────────────────────────────── */
+      const NEAR = num("near", 2.4);         // floor distance from the camera
+      const CADENCE = num("cadence", 4);     // steps per second
+      const STEP_ANGLE = num("stepAngle", 27.5);
+      const HOLD = num("armRaise", 140);     // the presenting pose
+      const CARRY = num("carry", -12);       // arms at his sides, below frame
+      const ENTRY_STEPS = 3.4;
+      const CREASE = num("crease", 0);      // fold lines, off; ?crease=0.13 to look again
+      const HANDLE = num("handle", 0.45);   // final tangent handle, as a fraction of the span
+
+      const base = {
+        ...robotDefaults, ...robotPresets["D mild"],
+        stepAngle: STEP_ANGLE, armReach: 12,
+        height: num("height", robotPresets["D mild"].height ?? robotDefaults.height),
+      };
+      const SHEET = { grip: num("grip", 1.0), height: num("sheetH", 0.60), out: 0.15, tilt: -12 };
+
+      /* ── where he ends up ────────────────────────────────────────── */
+
+      const AHEAD = (() => {
+        const d = Math.hypot(CAMERA_IN_ROOM.x, CAMERA_IN_ROOM.z);
+        return { x: -CAMERA_IN_ROOM.x / d, z: -CAMERA_IN_ROOM.z / d };
+      })();
+      const SIDE = { x: -AHEAD.z, z: AHEAD.x };
+      const along = (distance, offset) => ({
+        x: CAMERA_IN_ROOM.x + AHEAD.x * distance + SIDE.x * offset,
+        z: CAMERA_IN_ROOM.z + AHEAD.z * distance + SIDE.z * offset,
+      });
+
+      /* The same cubic shape `doorRoute` uses, aimed at an arbitrary point.
+       * `reach` cannot express "this far from the camera and centred" — it
+       * slides the destination along one diagonal, so size and screen position
+       * are the same number. Here they are two. */
+      function routeTo(to, robot) {
+        const spec = doorRoute(1, { entryDistance: ENTRY_STEPS * stepLength(robot) });
+        const span = Math.hypot(to.x - spec.from.x, to.z - spec.from.z);
+        const radians = (headingToCamera(to) * Math.PI) / 180;
+        return buildRoute({
+          ...spec,
+          control1: { x: spec.from.x, z: Math.max(0.5, 0.45 * span) },
+          // A cubic's end tangent is `to - control2`, so pulling the handle
+          // back along the line to the camera makes the path deliver the turn.
+          control2: { x: to.x - HANDLE * span * Math.cos(radians), z: to.z - HANDLE * span * Math.sin(radians) },
+          to,
+          arrive: "camera",
+        });
+      }
+
+      const screenBox = (robot, at) => {
+        const scene = getScene();
+        const toScreen = mockupToScreen(scene);
+        let x0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const solid of placeRobot(robot, { ...at, facing: headingToCamera(at), travel: 0 })) {
+          for (const q of solid.quads) for (const v of q.points) {
+            const p = toScreen(projectCameraSpace(toCameraSpace(v)));
+            x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y1 = Math.max(y1, p.y);
+          }
+        }
+        return { mid: (x0 + x1) / 2, bottom: y1 };
+      };
+
+      let plan = null;
+      function makePlan() {
+        const robot = buildRobot(base);
+        const step = stepLength(robot);
+
+        /* Fix the sheet's width to the pose he finishes in, before anything
+         * asks for a sheet. Everything downstream then gets the rigid one. */
+        restSpan = null;
+        /* `rockAngle: 0` matters. START_PHASE is where the roll *peaks*, and a
+         * body rolled 20 degrees turns y into z, so the hands stop being
+         * symmetric about the spine — measuring there made the sheet 3% narrow
+         * and slightly lopsided. The frame this freezes for has the rock
+         * scaled out, so measure it there. Span is otherwise phase-invariant:
+         * `armSwing` is fore/aft and nothing else moves the hands in z. */
+        restSpan = handSpan(buildRobot({
+          ...base, phase: START_PHASE, rockAngle: 0, armRaise: HOLD,
+        }));
+
+        /* Centre him: straight down the camera axis lands on the mockup's
+         * principal point, not the middle of the window, so he has to be slid
+         * along the axis's perpendicular until he sits in the middle.
+         *
+         * Two things this has to get right, and both were wrong first time:
+         *
+         * 1. Centre the *finished* composition — arms up, sheet in hand — not
+         *    the walking body. He stands turned toward the camera, so his near
+         *    arm projects wider than his far one; raising both arms and adding
+         *    a sheet moves the silhouette's middle by about 90px, which is
+         *    exactly the drift that was visible.
+         * 2. Do not assume which way the perpendicular runs on screen. Whether
+         *    screen x rises or falls with the offset depends on the room basis,
+         *    and a bisection that guesses wrong walks to its bracket's edge
+         *    instead of the root. So measure the direction, then bisect. */
+        /* Posed exactly as the last frame draws him: rock scaled out, arms up,
+         * sheet in hand. Measuring at full rock — which is what START_PHASE
+         * gives you, since `roll` peaks precisely where the legs come together
+         * — leans him 20 degrees and slides the silhouette by about 90px. That
+         * lean is real during the walk and gone by the time he has stopped, so
+         * centring on it centres a pose that is never on screen. */
+        const holdingAt = (phase) => {
+          const robot = buildRobot({ ...base, phase, rockAngle: 0, armRaise: HOLD });
+          robot.parts.push({ name: "sheet", quads: sheetQuads(robot) });
+          return robot;
+        };
+
+        const centre = (distance, phase = START_PHASE) => {
+          const holding = holdingAt(phase);
+          const midX = (offset) => screenBox(holding, along(distance, offset)).mid;
+          const rising = midX(0.5) > midX(-0.5);
+          let lo = -3, hi = 3;
+          for (let i = 0; i < 30; i += 1) {
+            const mid = (lo + hi) / 2;
+            if ((midX(mid) < innerWidth / 2) === rising) lo = mid;
+            else hi = mid;
+          }
+          return (lo + hi) / 2;
+        };
+
+        /* Land on a whole number of steps, so the last footfall is the stop.
+         * Route length falls monotonically as he stands further away, so a
+         * bisection on distance lands exactly, the way `quantiseReach` does
+         * on reach. */
+        const lengthAt = (d) => routeTo(along(d, centre(d)), robot).length;
+        const steps = Math.round(lengthAt(NEAR) / step);
+        let lo = NEAR - 0.6, hi = NEAR + 0.6;
+        for (let i = 0; i < 30; i += 1) {
+          const mid = (lo + hi) / 2;
+          if (lengthAt(mid) > steps * step) lo = mid; else hi = mid;
+        }
+        const distance = (lo + hi) / 2;
+        /* Second pass: now that the step count is known, centre on the phase
+         * he actually finishes on. An odd step count lands him on the mirrored
+         * half of the cycle, which projects differently on a body turned
+         * toward the camera. */
+        const to = along(distance, centre(distance, START_PHASE + steps / 2));
+        const route = routeTo(to, robot);
+
+        /* Where the sheet's top edge would be at the instant he has it but has
+         * not raised it. Below the window bottom means it can come into being
+         * unseen — the "he picked it up from down there" read. Above means a
+         * visible pop, and no amount of timing fixes that. */
+        const low = buildRobot({ ...base, phase: START_PHASE, armRaise: CARRY });
+        low.parts.push({ name: "sheet", quads: sheetQuads(low) });
+        const toScreen = mockupToScreen(getScene());
+        const lowSheet = placeRobot(low, { ...to, facing: headingToCamera(to), travel: 0 })
+          .find((q) => q.name === "sheet");
+        const carriedTop = Math.min(...lowSheet.quads[0].points
+          .map((v) => toScreen(projectCameraSpace(toCameraSpace(v))).y));
+
+        const finalSheet = placeRobot(holdingAt(START_PHASE + steps / 2), { ...to, facing: headingToCamera(to), travel: 0 })
+          .find((q) => q.name === "sheet");
+        const wide = finalSheet.quads[0].points.map((v) => toScreen(projectCameraSpace(toCameraSpace(v))).x);
+        const sheetWide = Math.max(...wide) - Math.min(...wide);
+
+        const restPts = finalSheet.quads[0].points
+          .map((v) => toScreen(projectCameraSpace(toCameraSpace(v))));
+        const sheetBox = {
+          w: Math.hypot(restPts[1].x - restPts[0].x, restPts[1].y - restPts[0].y),
+          h: Math.hypot(restPts[3].x - restPts[0].x, restPts[3].y - restPts[0].y),
+        };
+
+        return { route, to, distance, steps, seconds: steps / CADENCE, step,
+                 carriedTop, sheetWide, sheetBox };
+      }
+
+      /* ── the timeline ────────────────────────────────────────────── */
+
+      const T = {
+        door: 1.1,
+        beat: 0.15,
+        /* He is 3.4 steps behind the wall, so the wind-up and the first
+         * strides are hidden anyway — no reason to spend screen time on them.
+         * The empty doorway *is* the beat. */
+        windUp: 0.3,
+        settle: 0.2,
+        reachDown: 0.45,
+        lift: 0.75,
+      };
+
+      const ease = (t) => 1 - (1 - t) * (1 - t) * (1 - t);
+      const clamp01 = (t) => Math.min(1, Math.max(0, t));
+
+      function beats() {
+        /* He walks the first 3.4 steps behind the wall, so those seconds can
+         * be spent while the door is still swinging — nothing visible is lost,
+         * and it is the cheapest second in the whole sequence. A small beat is
+         * kept so the doorway is briefly, visibly empty. */
+        const hidden = ENTRY_STEPS / CADENCE;
+        const walkAt = Math.max(0.2, T.door + T.beat - hidden);
+        const settleAt = walkAt + plan.seconds;
+        const downAt = settleAt;                       // overlaps the settle
+        const liftAt = downAt + T.reachDown;
+        /* No fade. The copy is on the paper from the moment the paper exists,
+         * so it never "appears" — it rides up into the frame from below, the
+         * way words on a real held-up sign do. The only thing that was ever
+         * animating was our own confidence that the viewer had seen it. */
+        return { walkAt, settleAt, downAt, liftAt, end: liftAt + T.lift + 0.25 };
+      }
+
+      function frameAt(t) {
+        const b = beats();
+
+        // Door. Only rest..EDGE_ON renders, so ease across that and leave it.
+        // It shuts a quarter of the way through the walk, as `about.js` does.
+        const swing = clamp01(t / T.door);
+        const shut = clamp01((t - (T.door + plan.seconds * 0.25)) / T.door);
+        const open = Math.min(DOOR_PANEL.open, EDGE_ON);
+        if (swing < 1) setDoorAngle(DOOR_PANEL.rest + (open - DOOR_PANEL.rest) * ease(swing));
+        else if (shut > 0 && shut < 1) setDoorAngle(open + (DOOR_PANEL.rest - open) * ease(shut));
+        else setDoorAngle(shut >= 1 ? DOOR_PANEL.rest : DOOR_PANEL.open);
+
+        const walked = t - b.walkAt;
+        const windUp = clamp01((t - (b.walkAt - T.windUp)) / T.windUp);
+        const cycles = START_PHASE + Math.max(0, walked) * (CADENCE / 2);
+        const finish = START_PHASE + plan.steps / 2;
+        const phase = Math.min(cycles, finish);
+
+        const settle = clamp01((t - b.settleAt) / T.settle);
+        const rock = walked <= 0 ? windUp : (phase < finish ? 1 : (1 - settle) ** 2);
+
+        // Arms: 42 through the walk, down to the sides, then up holding it.
+        const down = clamp01((t - b.downAt) / T.reachDown);
+        const up = clamp01((t - b.liftAt) / T.lift);
+        const armRaise = up > 0
+          ? CARRY + (HOLD - CARRY) * ease(up)
+          : robotDefaults.armRaise + (CARRY - robotDefaults.armRaise) * ease(down);
+
+        return {
+          phase, rock, armRaise,
+          // The sheet may exist from the bottom of the reach onward — but
+          // `draw` still has to see its projected top edge clear the frame
+          // before it will show it, because "off screen" is a fact about
+          // pixels, not about the arm angle.
+          sheet: t >= b.downAt + T.reachDown,
+          text: 1,
+          entering: phase < START_PHASE + ENTRY_STEPS / 2,
+          label: t < b.walkAt ? "door" : phase < finish ? "walk"
+            : t < b.liftAt ? "reach down" : t < b.liftAt + T.lift ? "raise" : "read",
+          end: b.end,
+        };
+      }
+
+      /* ── the sheet, gripped at his hands ─────────────────────────── */
+
+      /* The far end of an arm: the four vertices furthest from the shoulder,
+       * averaged. Cheaper than naming a hand part, and it follows the arm
+       * through both hinges without knowing anything about them. */
+      function handPoint(robot, name) {
+        const p = robot.params;
+        const shoulderY = robot.shoulderLine - p.shoulderDrop + robot.lift;
+        const part = robot.parts.find((q) => q.name === name);
+        const seen = new Map();
+        for (const pt of part.quads.flatMap((q) => q.points)) {
+          seen.set([pt.x, pt.y, pt.z].map((n) => n.toFixed(6)).join(","), pt);
+        }
+        const d = (pt) => pt.x ** 2 + (pt.y - shoulderY) ** 2 + pt.z ** 2;
+        return [...seen.values()].sort((a, b) => d(b) - d(a)).slice(0, 4)
+          .reduce((a, q) => ({ x: a.x + q.x / 4, y: a.y + q.y / 4, z: a.z + q.z / 4 }), { x: 0, y: 0, z: 0 });
+      }
+
+      /* Half the sheet's width, in room units, frozen at the pose he ends in.
+       *
+       * Deriving it from the live hands every frame made the paper elastic:
+       * `armRaise` swings the arms in the y-z plane, so the hands are furthest
+       * apart in z around 90 degrees and closer together at the 140 he
+       * finishes on. The sheet grew to 800px mid-lift and shrank back to 593,
+       * which reads as the text zooming. Paper is rigid; only where he holds
+       * it moves. */
+      let restSpan = null;
+
+      const handSpan = (robot) =>
+        ((handPoint(robot, "arm.left").z - handPoint(robot, "arm.right").z) / 2) * SHEET.grip;
+
+      function sheetQuads(robot) {
+        const [L, R] = [handPoint(robot, "arm.left"), handPoint(robot, "arm.right")];
+        const t = (SHEET.tilt * Math.PI) / 180;
+        const up = { x: -Math.sin(t), y: Math.cos(t), z: 0 };
+        const nx = { x: Math.cos(t), y: Math.sin(t), z: 0 };
+        const spanZ = restSpan ?? ((L.z - R.z) / 2) * SHEET.grip;
+        const midZ = (L.z + R.z) / 2;
+        const bx = (L.x + R.x) / 2 + SHEET.out;
+        const by = (L.y + R.y) / 2;
+        const c = (su, sv) => ({
+          x: bx + up.x * SHEET.height * sv,
+          y: by + up.y * SHEET.height * sv,
+          z: midZ + su * spanZ,
+        });
+        /* Corners are pulled slightly off square. A quadrilateral still maps
+         * exactly under the DOM homography — it is a projective map of a quad,
+         * not of a rectangle — so this costs nothing and stops the sheet
+         * reading as a UI panel bolted into the drawing. */
+        const SKEW = [[0.012, 0.010], [-0.008, 0.016], [0, 0], [0, 0]];
+        const corners = [c(1, 1), c(-1, 1), c(-1, 0), c(1, 0)].map((q, i) => ({
+          x: q.x, y: q.y + SKEW[i][1] * SHEET.height, z: q.z + SKEW[i][0],
+        }));
+
+        /* Creases, off by default. Folding was a tidy answer to where the
+         * sheet came from, but it buys that with a fold to explain and a fold
+         * to animate, and the paper reads cleaner without it. */
+        const crease = CREASE <= 0 ? [] : [
+          { points: [[0, 0.5], [1, 0.5]], open: true, alpha: CREASE },
+          { points: [[0.5, 0], [0.5, 1]], open: true, alpha: CREASE },
+        ];
+
+        /* A hair of thickness, so the top edge reads as a sheet seen slightly
+         * from below rather than as a hole cut in the wall. */
+        const t2 = 0.006;
+        const shift = (pts, k) => pts.map((q) => ({
+          x: q.x + nx.x * k, y: q.y + nx.y * k, z: q.z + nx.z * k,
+        }));
+        const front = shift(corners, t2 / 2);
+        const back = shift(corners, -t2 / 2);
+        const side = (i, j, normal) => ({
+          normal, points: [front[i], front[j], back[j], back[i]], detail: [],
+        });
+        const edge = { x: -nx.y, y: nx.x, z: 0 };
+        return [
+          { normal: nx, points: front, detail: crease },
+          { normal: { x: -nx.x, y: -nx.y, z: -nx.z }, points: [...back].reverse(), detail: [] },
+          side(1, 0, edge),                                      // top edge
+          side(3, 2, { x: -edge.x, y: -edge.y, z: -edge.z }),    // bottom edge
+          side(0, 3, { x: 0, y: 0, z: 1 }),
+          side(2, 1, { x: 0, y: 0, z: -1 }),
+        ];
+      }
+
+      /* Four corners → matrix3d, so the DOM copy sits on the drawn sheet in
+       * the room's own perspective and stays real, selectable text. */
+      /* The box is sized once, to the sheet's *resting* size, and never
+       * resized again. Resizing it per frame was the bug: a projective map is
+       * not a rigid one, so the quad's top edge foreshortens as he tilts the
+       * paper up, and tracking that with the CSS width re-wrapped the copy on
+       * every frame. Paper does not reflow when you tilt it. Holding the box
+       * fixed also means the resting scale is exactly 1, which is the other
+       * half of the fix: at 260px tall it was being blown up 1.82x, and a
+       * transformed layer rasterises at its own size, so the type was a
+       * scaled bitmap rather than glyphs. */
+      function applyHomography(el, [tl, tr, br, bl]) {
+        const W = parseFloat(el.style.width), S = parseFloat(el.style.height);
+        const src = [[0, 0], [W, 0], [W, S], [0, S]];
+        const dst = [[tl.x, tl.y], [tr.x, tr.y], [br.x, br.y], [bl.x, bl.y]];
+        const A = [], b = [];
+        for (let i = 0; i < 4; i += 1) {
+          const [x, y] = src[i], [u, v] = dst[i];
+          A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+          A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+        }
+        const M = A.map((row, r) => [...row, b[r]]);
+        for (let col = 0; col < 8; col += 1) {
+          let piv = col;
+          for (let r = col + 1; r < 8; r += 1) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+          if (Math.abs(M[piv][col]) < 1e-12) return;
+          [M[col], M[piv]] = [M[piv], M[col]];
+          for (let r = 0; r < 8; r += 1) {
+            if (r === col) continue;
+            const k = M[r][col] / M[col][col];
+            for (let c2 = col; c2 <= 8; c2 += 1) M[r][c2] -= k * M[col][c2];
+          }
+        }
+        const [a, c, e, d, f, g, i, j] = M.map((row, r) => row[8] / row[r]);
+        el.style.transform = `matrix3d(${a},${d},0,${i}, ${c},${f},0,${j}, 0,0,1,0, ${e},${g},0,1)`;
+      }
+
+      /* ── drawing ─────────────────────────────────────────────────── */
+
+      let born = false;
+      let landed = null;
+      let scaleNow = "";
+      function draw(t) {
+        const scene = getScene();
+        if (!scene || !plan) return;
+        const f = frameAt(t);
+        const toScreen = mockupToScreen(scene);
+
+        const posed = buildRobot({ ...base, phase: f.phase });
+        const pose = routePose(posed, plan.route);
+        const robot = buildRobot({
+          ...base, phase: f.phase,
+          rockAngle: base.rockAngle * f.rock,
+          armRaise: f.armRaise,
+        });
+        if (f.sheet) robot.parts.push({ name: "sheet", quads: sheetQuads(robot) });
+
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        const solids = placeRobot(robot, pose);
+
+
+        ctx.save();
+        if (f.entering) {
+          // Through the doorway he is only visible in the gap beside the panel.
+          const opening = new Path2D(openingPath(scene));
+          const gap = new Path2D(opening);
+          gap.addPath(new Path2D(panelPath(scene, DOOR_PANEL.open)));
+          ctx.clip(opening);
+          ctx.clip(gap, "evenodd");
+        }
+        drawRobot(ctx, solids, toScreen, { weight: Math.max(1, scene.scale * 1.35) });
+        ctx.restore();
+
+        const placed = solids.find((s) => s.name === "sheet");
+        if (placed) {
+          const pts = placed.quads[0].points.map((p) => toScreen(projectCameraSpace(toCameraSpace(p))));
+          // Latch: once it has legitimately entered from below it stays, but
+          // it is never drawn on a frame where it would have appeared inside
+          // the picture. If the latch never opens, the gag does not work at
+          // this distance and the readout says so.
+          born = born || top > innerHeight;
+          const w = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+          const h = Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y);
+          domSheet.classList.toggle("on", f.text > 0);
+          if (f.text > 0) {
+            applyHomography(domSheet, pts);
+            domSheet.style.opacity = f.text;
+            scaleNow = `sheet quad ${w.toFixed(0)}x${h.toFixed(0)}px, fixed box ` +
+              `${plan.sheetBox.w.toFixed(0)}x${plan.sheetBox.h.toFixed(0)} at ` +
+              `${domSheet.style.fontSize}, scale ${(w / plan.sheetBox.w).toFixed(2)}x ` +
+              `across / ${(h / plan.sheetBox.h).toFixed(2)}x down`;
+          }
+        } else {
+          domSheet.classList.remove("on");
+        }
+
+        if (f.label === "read") {
+          const spread = (pick) => {
+            const pts = solids.filter(pick).flatMap((q) => q.quads).flatMap((q) => q.points)
+              .map((v) => toScreen(projectCameraSpace(toCameraSpace(v))));
+            const lo = Math.min(...pts.map((q) => q.x)), hi = Math.max(...pts.map((q) => q.x));
+            return (lo + hi) / 2 - innerWidth / 2;
+          };
+          landed = `body ${spread((q) => q.name !== "sheet").toFixed(0)}  ` +
+            `sheet ${placed ? spread((q) => q.name === "sheet").toFixed(0) : "—"}  ` +
+            `all ${spread(() => true).toFixed(0)}`;
+        }
+
+        document.getElementById("hud").textContent =
+          `${t.toFixed(2)}s / ${f.end.toFixed(2)}s   ${f.label}\n` +
+          `${plan.steps} steps at ${CADENCE}/s = ${plan.seconds.toFixed(2)}s walking\n` +
+          `standing ${plan.distance.toFixed(2)} from camera, ${(base.height).toFixed(2)} door-heights tall\n` +
+          `sheet ${plan.sheetWide.toFixed(0)}px wide` +
+          `\ncarried sheet's top edge sits ${(plan.carriedTop - innerHeight).toFixed(0)}px ` +
+          `${plan.carriedTop > innerHeight ? "below the frame — can be hidden" : "INSIDE the frame — cannot be hidden"}` +
+          (scaleNow ? `\n${scaleNow}` : "") +
+          (landed ? `\nfinal frame, px off centre:  ${landed}` : "");
+        return f.end;
+      }
+
+      function resize() {
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        canvas.width = Math.round(innerWidth * dpr);
+        canvas.height = Math.round(innerHeight * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      let raf = null;
+      function play() {
+        cancelAnimationFrame(raf);
+        born = false; landed = null;
+        const started = performance.now();
+        raf = requestAnimationFrame(function step(now) {
+          const t = (now - started) / 1000;
+          const end = draw(t);
+          if (t < end + 1.4) raf = requestAnimationFrame(step);
+        });
+      }
+
+      /* Laid out at the size it is read at: the box is the resting sheet in
+       * real screen pixels, and the type scales with the viewport because the
+       * sheet does. 260 was the old box height, so the authored 11px keeps its
+       * proportions. */
+      function sizeSheet() {
+        domSheet.style.width = `${plan.sheetBox.w.toFixed(2)}px`;
+        domSheet.style.height = `${plan.sheetBox.h.toFixed(2)}px`;
+        domSheet.style.fontSize = `${(11 * plan.sheetBox.h / 260).toFixed(2)}px`;
+      }
+
+      addEventListener("room:layout", () => { resize(); plan = makePlan(); sizeSheet(); });
+      addEventListener("keydown", (e) => { if (e.key === " ") { e.preventDefault(); play(); } });
+      addEventListener("click", play);
+
+      resize();
+      plan = makePlan();
+      sizeSheet();
+      document.getElementById("hint").textContent =
+        "space or click to replay\n?t=3.5 one frame  ?cadence=6  ?near=2.0  ?stepAngle=34";
+
+      if (query.has("t")) draw(num("t", 0));
+      else play();
+    </script>
+    <script type="module" src="../../room.js"></script>
+  </body>
+</html>

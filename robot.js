@@ -79,6 +79,11 @@ export const robotDefaults = {
   cadence: 1.7, // steps per second; two steps make one cycle
 
   armSwing: 0, // degrees fore/aft at the shoulder; the walk will drive this
+  /* `armSwing` is a *counter*-swing: the right arm gets its negation, because
+   * that is what walking does. Reaching forward with both hands at once is a
+   * different motion and needs its own term, added to both shoulders with the
+   * same sign. At 0 the arms are exactly where they always were. */
+  armReach: 0, // degrees both arms swing forward together
   armRaise: 42, // degrees out sideways, clearing the flank for the key
 
   /* Antenna ───────────────────────────────────────────────────────── */
@@ -559,13 +564,13 @@ export function buildRobot(params = {}) {
   const posed = hinge(
     hingeX(arm, { y: shoulderY, z: p.torsoWidth / 2 }, -p.armRaise),
     { x: 0, y: shoulderY },
-    p.armSwing,
+    p.armReach + p.armSwing,
   );
   add("arm.left", posed);
   add("arm.right", mirrorZ(hinge(
     hingeX(arm, { y: shoulderY, z: p.torsoWidth / 2 }, -p.armRaise),
     { x: 0, y: shoulderY },
-    -p.armSwing,
+    p.armReach - p.armSwing,
   )));
 
   /* Neck, head, eyes. */
@@ -1075,7 +1080,16 @@ export function drawRobot(context, solids, toScreen, style = {}) {
           context.fill();
           context.fillStyle = paper;
         }
-        context.stroke();
+        // A marking may sit lighter than the outline it lives on — a crease in
+        // paper is not the same line as the paper's edge.
+        if (mark.alpha !== undefined) {
+          context.save();
+          context.globalAlpha = mark.alpha;
+          context.stroke();
+          context.restore();
+        } else {
+          context.stroke();
+        }
       }
     }
   }

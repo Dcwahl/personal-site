@@ -7,3 +7,6 @@ node_modules/
 # Python bytecode from experiments/tools/imgprobe
 __pycache__/
 *.pyc
+
+# Playwright MCP scratch output
+.playwright-mcp/

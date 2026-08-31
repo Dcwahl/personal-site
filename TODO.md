@@ -25,12 +25,23 @@ follows from `DOOR_PLACEMENT`.
       robot, and walks him to centre frame. Loading `#about` starts it directly;
       reduced motion jumps to the arrived pose.
 - [ ] Needs actual content — bio, contact. Contact lives here rather than as its
-      own nav item; if other work gets hosted it goes under "selected work".
-- [ ] Decide how the robot presents that content. The entrance is now the visual
-      gimmick; the unresolved part is the paper/content reveal after he arrives.
+      own nav item; if other work gets hosted it goes under "selected work". The
+      copy in the paper study is placeholder.
+- [x] Decide how the robot presents that content. He walks nearly into the lens
+      and holds up a sheet; the copy is real DOM text mapped onto the sheet's
+      projected corners, so it stays selectable and accessible. Studied in
+      `experiments/tools/paper-sequence.html`. See "The paper" in `ROBOT.md`.
+- [ ] Wire the paper into `about.js`. Nothing of the study has landed on the
+      live page yet, and `REACH_LIMITS.max` in `walk.js` has to be overturned or
+      bypassed to let him come that close.
+- [ ] Decide where the sheet comes from. He arrives empty-handed and it appears
+      in his hands; it is too big to be born below the frame at any distance
+      that keeps it readable, and folding was rejected.
+- [ ] Portrait fallback for the sheet. At 390px wide the type sets at ~9px.
+      Probably folds into the portrait decision above.
 - [ ] Revisit repeat/skip behavior once content exists. A second click currently
       resets the sequence, but a returning visitor should not have to wait
-      through the full entrance to reach the bio.
+      through the full entrance (~10s) to reach the bio.
 
 ## Before/around publishing
 

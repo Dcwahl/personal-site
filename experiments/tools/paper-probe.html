@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Paper probe</title>
+    <link rel="stylesheet" href="../../styles.css" />
+    <style>
+      .probe {
+        position: fixed;
+        z-index: 5;
+        left: 1rem;
+        bottom: 1rem;
+        font: 12px/1.5 ui-monospace, monospace;
+        background: rgb(218 201 164 / 92%);
+        border: 1px solid rgb(23 20 15 / 30%);
+        padding: 0.6rem 0.75rem;
+        display: grid;
+        gap: 0.25rem 0.5rem;
+        grid-template-columns: auto 8rem 3.5rem;
+        align-items: center;
+      }
+      .probe input[type="range"] { width: 8rem; }
+      .readout { position: fixed; z-index: 5; right: 1rem; bottom: 1rem;
+        font: 12px/1.5 ui-monospace, monospace; white-space: pre; text-align: right; }
+      /* Candidate DOM panel, drawn from the sheet's real projected corners. */
+      .sheet-dom {
+        position: fixed; z-index: 4; top: 0; left: 0;
+        transform-origin: 0 0;
+        width: 100px; height: 100px; /* unit box; matrix3d does the rest */
+        pointer-events: none;
+        display: none;
+      }
+      .sheet-dom.on { display: block; }
+      .sheet-dom__inner {
+        width: 100%; height: 100%;
+        padding: 16px 18px;
+        font: 11px/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif;
+        color: var(--ink);
+        outline: 1px solid rgb(23 20 15 / 35%);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="room" aria-hidden="true">
+        <svg class="room__doorway">
+          <defs><clipPath id="doorway-clip"><path data-door="clip" /></clipPath></defs>
+          <path class="doorway__beyond" data-door="hole" />
+          <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
+        </svg>
+        <img class="room__door" src="../../door.svg" alt="" />
+        <svg class="room__seams" preserveAspectRatio="none">
+          <path data-seam="wallCorner" /><path data-seam="leftFloor" />
+          <path data-seam="floorToDoor" /><path data-seam="floorPastDoor" />
+        </svg>
+      </div>
+      <canvas class="stage stage--robot" aria-hidden="true"></canvas>
+      <div class="sheet-dom"><div class="sheet-dom__inner" id="dom-copy"></div></div>
+    </main>
+
+    <div class="probe" id="probe"></div>
+    <div class="readout" id="readout"></div>
+
+    <script type="module">
+      import { getScene, setDoorAngle } from "../../room.js";
+      import { DOOR_PANEL } from "../../door.js";
+      import { mockupToScreen } from "../../camera.js";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets, robotScale } from "../../robot.js";
+      import { planRoute, routeCycles, headingToCamera, buildRoute, doorRoute, stepLength, START_PHASE, CADENCE_LIMITS } from "../../walk.js";
+      import { CAMERA_IN_ROOM } from "../../camera.js";
+
+      const canvas = document.querySelector(".stage--robot");
+      const ctx = canvas.getContext("2d");
+      const domSheet = document.querySelector(".sheet-dom");
+      const domCopy = document.getElementById("dom-copy");
+
+      const base = { ...robotDefaults, ...robotPresets["D mild"] };
+
+      const controls = {
+        near:     { min: 1.2, max: 7.0, step: 0.05, value: 0 },  // 0 = whatever planRoute lands on
+        armReach: { min: -30, max: 200, step: 1, value: 90 },
+        armRaise: { min: -20, max: 200, step: 1, value: 0 },
+        sheetW:   { min: 0.5, max: 3.0, step: 0.01, value: 1.0 },   // 1 = hand to hand
+        sheetH:   { min: 0.1, max: 1.5, step: 0.01, value: 0.42 },  // local units, up from the grip
+        sheetTilt:{ min: -60, max: 60, step: 1, value: 0 },          // lean back from vertical
+        sheetOut: { min: -0.2, max: 0.5, step: 0.01, value: 0 },     // extra x toward camera
+        sheetUp:  { min: -0.5, max: 1.2, step: 0.01, value: 0 },     // extra y
+        dom:      { min: 0, max: 1, step: 1, value: 0 },
+      };
+
+      /* `?armSwing=-90&sheetOut=0.3` — every control is settable, so headless
+         screenshots can sample poses without a live browser session. */
+      const query = new URLSearchParams(location.search);
+      for (const [name, c] of Object.entries(controls)) {
+        const given = Number(query.get(name));
+        if (query.has(name) && Number.isFinite(given)) c.value = given;
+      }
+
+      const probe = document.getElementById("probe");
+      for (const [name, c] of Object.entries(controls)) {
+        const label = document.createElement("label"); label.textContent = name;
+        const input = document.createElement("input");
+        Object.assign(input, { type: "range", min: c.min, max: c.max, step: c.step, value: c.value });
+        const out = document.createElement("span"); out.textContent = c.value;
+        input.addEventListener("input", () => { c.value = Number(input.value); out.textContent = input.value; render(); });
+        probe.append(label, input, out);
+      }
+
+      function resize() {
+        const dpr = Math.min(devicePixelRatio || 1, 2);
+        canvas.width = Math.round(innerWidth * dpr);
+        canvas.height = Math.round(innerHeight * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+
+      /* A thin sheet between the two hands, in the robot's own frame. */
+      function sheetQuads(robot) {
+        const p = robot.params;
+        const arms = ["arm.left", "arm.right"].map((n) => robot.parts.find((q) => q.name === n));
+        const shoulderY = robot.shoulderLine - p.shoulderDrop + robot.lift;
+        // Distal end of each arm: the four corners farthest from the shoulder.
+        const hand = (part) => {
+          const seen = new Map();
+          for (const pt of part.quads.flatMap((q) => q.points)) {
+            seen.set([pt.x, pt.y, pt.z].map((n) => n.toFixed(6)).join(","), pt);
+          }
+          const pts = [...seen.values()];
+          const d = (pt) => (pt.x) ** 2 + (pt.y - shoulderY) ** 2 + (pt.z) ** 2;
+          const far = pts.sort((a, b) => d(b) - d(a)).slice(0, 4);
+          return far.reduce((a, q) => ({ x: a.x + q.x / 4, y: a.y + q.y / 4, z: a.z + q.z / 4 }), { x: 0, y: 0, z: 0 });
+        };
+        const [L, R] = arms.map(hand);
+
+        /* The sheet is *gripped*: its bottom corners are the hands, wherever
+         * the shoulders have put them. That makes the pose answer the real
+         * question — how big a sheet can he actually hold — instead of letting
+         * a free-floating rectangle promise a size his arms cannot reach.
+         *
+         * `sheetW` then only widens it beyond the grip (paper overhangs a
+         * hand), and `sheetUp` / `sheetOut` nudge the whole thing off the
+         * hands for comparison. */
+        const grip = controls.sheetW.value; // 1 = exactly hand to hand
+        const spanZ = ((L.z - R.z) / 2) * grip;
+        const midZ = (L.z + R.z) / 2;
+        const baseX = (L.x + R.x) / 2 + controls.sheetOut.value;
+        const baseY = (L.y + R.y) / 2 + controls.sheetUp.value;
+
+        const t = (controls.sheetTilt.value * Math.PI) / 180;
+        const up = { x: -Math.sin(t), y: Math.cos(t), z: 0 };
+        const nx = { x: Math.cos(t), y: Math.sin(t), z: 0 };
+        const H = controls.sheetH.value;
+        const c = (su, sv) => ({
+          x: baseX + up.x * H * sv,
+          y: baseY + up.y * H * sv,
+          z: midZ + su * spanZ,
+        });
+        // sv 0 is the gripped bottom edge, 1 the top.
+        const corners = [c(1, 1), c(-1, 1), c(-1, 0), c(1, 0)]; // TL TR BR BL, as seen
+        return {
+          corners,
+          quads: [
+            { normal: nx, points: corners, detail: [] },
+            { normal: { x: -nx.x, y: -nx.y, z: -nx.z }, points: [...corners].reverse(), detail: [] },
+          ],
+        };
+      }
+
+      /* Where the robot stands, as a floor distance from the camera.
+       *
+       * `reach` cannot express this. It slides the destination along one fixed
+       * diagonal, so pushing it up to make him bigger also slides him sideways
+       * — past the camera's own z at about 1.35 — and `planRoute` then bisects
+       * it back to centre, undoing the size. Distance and screen position are
+       * two degrees of freedom and reach is one. So: aim straight down the
+       * camera's own view direction, where the two are independent by
+       * construction, and let `near` be the distance along it.
+       */
+      const AHEAD = (() => {
+        const d = Math.hypot(CAMERA_IN_ROOM.x, CAMERA_IN_ROOM.z);
+        return { x: -CAMERA_IN_ROOM.x / d, z: -CAMERA_IN_ROOM.z / d };
+      })();
+      const standingAt = (distance) => ({
+        x: CAMERA_IN_ROOM.x + AHEAD.x * distance,
+        z: CAMERA_IN_ROOM.z + AHEAD.z * distance,
+      });
+
+      /* Straight down the camera axis lands on the mockup's principal point,
+       * which `mockupToScreen` does not put at the middle of the window. So
+       * slide along the axis's perpendicular until the silhouette centres —
+       * distance and screen position are independent here, which is the whole
+       * reason for aiming this way rather than through `reach`. */
+      const SIDE = { x: -AHEAD.z, z: AHEAD.x };
+      function centredAt(distance, robot, scene) {
+        const base = standingAt(distance);
+        const toScreen = mockupToScreen(scene);
+        const midX = (offset) => {
+          const at = { x: base.x + SIDE.x * offset, z: base.z + SIDE.z * offset };
+          let low = Infinity, high = -Infinity;
+          for (const solid of placeRobot(robot, { ...at, facing: headingToCamera(at), travel: 0 })) {
+            for (const q of solid.quads) for (const v of q.points) {
+              const x = toScreen(projectCameraSpace(toCameraSpace(v))).x;
+              low = Math.min(low, x); high = Math.max(high, x);
+            }
+          }
+          return (low + high) / 2;
+        };
+        let lo = -3, hi = 3;
+        for (let i = 0; i < 30; i += 1) {
+          const mid = (lo + hi) / 2;
+          if (midX(mid) < innerWidth / 2) lo = mid; else hi = mid;
+        }
+        const offset = (lo + hi) / 2;
+        return { x: base.x + SIDE.x * offset, z: base.z + SIDE.z * offset };
+      }
+
+      /* What it costs to walk there: the same cubic shape as `doorRoute`, but
+       * aimed at an arbitrary destination instead of sliding along its one
+       * diagonal. Length is what decides the duration, so this is the number
+       * that says whether coming close is affordable. */
+      function walkCost(to, robot) {
+        const spec = doorRoute(1);
+        const heading = Math.atan2(to.z - CAMERA_IN_ROOM.z, to.x - CAMERA_IN_ROOM.x);
+        const handle = Math.hypot(to.x - spec.from.x, to.z - spec.from.z) * 0.45;
+        const route = buildRoute({
+          ...spec,
+          control1: { x: spec.from.x, z: Math.max(0.5, handle) },
+          control2: { x: to.x + handle * Math.cos(heading), z: to.z + handle * Math.sin(heading) },
+          to,
+        });
+        const steps = Math.round(route.length / stepLength(robot));
+        return { steps, seconds: steps / CADENCE_LIMITS.max };
+      }
+
+      let plan = null;
+      function render() {
+        const scene = getScene(); if (!scene) return;
+        if (!plan) plan = planRoute(buildRobot(base), scene, innerWidth / 2, { entrySteps: 3.4 });
+        const params = { ...base, armReach: controls.armReach.value, armRaise: controls.armRaise.value };
+        const finish = routeCycles(buildRobot(base), plan.route);
+        const robot = buildRobot({ ...params, phase: START_PHASE, rockAngle: 0 });
+
+        const here = controls.near.value > 0
+          ? centredAt(controls.near.value, buildRobot({ ...base, phase: START_PHASE }), scene)
+          : plan.route.spec.to;
+        const pose = { x: here.x, z: here.z, facing: headingToCamera(here), travel: 0 };
+
+        const sheet = sheetQuads(robot);
+        robot.parts.push({ name: "sheet", quads: sheet.quads });
+
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        const solids = placeRobot(robot, pose);
+        const toScreen = mockupToScreen(scene);
+        drawRobot(ctx, solids, toScreen, { weight: Math.max(1, scene.scale * 1.35) });
+
+        // Project the sheet's corners for the DOM overlay + readout.
+        const placed = solids.find((s) => s.name === "sheet");
+        const screenPts = projectCorners(placed.quads[0].points, toScreen);
+        const w = Math.hypot(screenPts[1].x - screenPts[0].x, screenPts[1].y - screenPts[0].y);
+        const h = Math.hypot(screenPts[3].x - screenPts[0].x, screenPts[3].y - screenPts[0].y);
+
+        domSheet.classList.toggle("on", controls.dom.value === 1);
+        if (controls.dom.value === 1) applyHomography(domSheet, screenPts, w / h);
+
+        /* The robot's own ink, so "how big is he" is measured, not guessed. */
+        const body = solids.filter((q) => q.name !== "sheet").flatMap((q) => q.quads).flatMap((q) => q.points).map((v) => toScreen(projectCameraSpace(toCameraSpace(v))));
+        const bx = [Math.min(...body.map((q) => q.x)), Math.max(...body.map((q) => q.x))];
+        const by = [Math.min(...body.map((q) => q.y)), Math.max(...body.map((q) => q.y))];
+        const distance = Math.hypot(here.x - CAMERA_IN_ROOM.x, here.z - CAMERA_IN_ROOM.z);
+
+        document.getElementById("readout").textContent =
+          `viewport ${innerWidth}x${innerHeight}\n` +
+          `standing ${distance.toFixed(2)} from camera\n` +
+          `robot on screen ${(bx[1] - bx[0]).toFixed(0)} x ${(by[1] - by[0]).toFixed(0)} px\n` +
+          `feet at y ${by[1].toFixed(0)}${by[1] > innerHeight ? "  (off the bottom)" : ""}\n` +
+          `body centre x ${(((bx[0] + bx[1]) / 2) - innerWidth / 2).toFixed(0)} off centre\n` +
+          `sheet ${w.toFixed(0)} x ${h.toFixed(0)} px  →  type at ${(11 * h / 200).toFixed(1)}px\n` +
+          (() => { const c = walkCost(here, buildRobot(base)); return `walk from the door: ${c.steps} steps, ${c.seconds.toFixed(1)}s at max cadence`; })();
+      }
+
+      /* Nearest camera-space z, the same quantity `order()` falls back on. */
+      const camZ = (solid) =>
+        Math.min(...solid.quads.flatMap((q) => q.points.map((p) => toCameraSpace(p).z)));
+
+      /* placeRobot gives room-space points; reuse camera.js through drawRobot's
+       * own path by re-projecting here with the same helpers. */
+      import { toCameraSpace, projectCameraSpace } from "../../camera.js";
+      const projectCorners = (pts, toScreen) =>
+        pts.map((p) => toScreen(projectCameraSpace(toCameraSpace(p))));
+
+      /* Four-point homography → matrix3d, mapping the 100x100 unit box onto the
+       * sheet's projected quad. Standard DLT for a projective square map. */
+      function applyHomography(el, [tl, tr, br, bl], aspect = 1) {
+        const S = 200;
+        const W = S * aspect;
+        el.style.width = `${W}px`;
+        el.style.height = `${S}px`;
+        const src = [[0, 0], [W, 0], [W, S], [0, S]];
+        const dst = [[tl.x, tl.y], [tr.x, tr.y], [br.x, br.y], [bl.x, bl.y]];
+        const A = [], b = [];
+        for (let i = 0; i < 4; i++) {
+          const [x, y] = src[i], [u, v] = dst[i];
+          A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+          A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+        }
+        const h = solve(A, b);
+        if (!h) return;
+        const [a, c, e, d, f, g, i, j] = h;
+        el.style.transform =
+          `matrix3d(${a},${d},0,${i}, ${c},${f},0,${j}, 0,0,1,0, ${e},${g},0,1)`;
+      }
+      function solve(A, b) {
+        const n = b.length, M = A.map((row, r) => [...row, b[r]]);
+        for (let col = 0; col < 8; col++) {
+          let piv = col;
+          for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+          if (Math.abs(M[piv][col]) < 1e-12) return null;
+          [M[col], M[piv]] = [M[piv], M[col]];
+          for (let r = 0; r < n; r++) {
+            if (r === col) continue;
+            const k = M[r][col] / M[col][col];
+            for (let c2 = col; c2 <= 8; c2++) M[r][c2] -= k * M[col][c2];
+          }
+        }
+        return M.slice(0, 8).map((row, r) => row[8] / row[r]);
+      }
+
+      domCopy.textContent =
+        "Diego Wahl is a designer working on interfaces, systems and the odd " +
+        "paper aeroplane. Previously at somewhere, before that somewhere else. " +
+        "Currently taking on selected work.  hello@example.com";
+
+      /* `?ui=0` hides the sliders and the readout, for a clean frame. */
+      if (query.get("ui") === "0") {
+        probe.style.display = "none";
+        document.getElementById("readout").style.display = "none";
+      }
+
+      addEventListener("room:layout", () => { resize(); plan = null; render(); });
+      resize();
+      setDoorAngle(DOOR_PANEL.rest);
+      render();
+    </script>
+    <script type="module" src="../../room.js"></script>
+  </body>
+</html>
