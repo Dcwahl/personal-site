@@ -2,7 +2,7 @@ import {
   buildTrailDots,
   drawTrail as drawTrailDots,
   trailStyle,
-} from "./trail.js?v=1";
+} from "./trail.js?v=2";
 
 const canvas = document.querySelector(".stage--plane");
 const context = canvas.getContext("2d");

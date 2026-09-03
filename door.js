@@ -18,7 +18,7 @@
  * that is not really a swinging rectangle would not close like this.
  */
 
-import { project, mockupToScreen } from "./camera.js?v=1";
+import { project, mockupToScreen } from "./camera.js?v=2";
 
 export const DOOR_PANEL = {
   /* Room coordinates: x toward the viewer along the right wall, z out from it.

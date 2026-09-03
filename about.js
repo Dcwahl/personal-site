@@ -16,11 +16,11 @@
  * to feel any of it — the two share `paper.js` rather than a copy.
  */
 
-import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=1";
-import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=1";
-import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=1";
-import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=1";
-import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=1";
+import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=2";
+import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=2";
+import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=2";
+import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=2";
+import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=2";
 import {
   planPaper,
   applyHomography,
@@ -30,7 +30,7 @@ import {
   LAY,
   SHEET,
   ENTRY_STEPS,
-} from "./paper.js?v=1";
+} from "./paper.js?v=2";
 
 const canvas = document.querySelector(".stage--robot");
 const context = canvas.getContext("2d");

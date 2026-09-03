@@ -12,7 +12,7 @@
  * the shape is scale-free and `height` alone sizes it in the room.
  */
 
-import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=1";
+import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=2";
 
 export const robotDefaults = {
   /* Placement ─────────────────────────────────────────────────────── */
