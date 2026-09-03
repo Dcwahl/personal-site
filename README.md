@@ -124,8 +124,12 @@ sets a version explicitly and `node version.mjs --check` prints the current one;
 running it twice is the same as running it once.
 
 The `--site dcwahl` is what makes this update the existing site rather than
-creating another one. `deploy` prompts with the file list before uploading;
-read it. Expect **13 files**:
+creating another one.
+
+**`deploy` does not ask before uploading.** Older notes here said it prompts
+with the file list; `wispctl` 1.3.2 does not — it prints the count and the URLs
+only once the upload is already done. There is no chance to abort, so the check
+has to happen afterwards. Expect **13 files**:
 
 ```text
 index.html  styles.css  scene.js   room.js    door.js   camera.js
@@ -133,9 +137,19 @@ robot.js    walk.js     paper.js   about.js   flight.js trail.js
 door.svg
 ```
 
-If any `.png`, `README.md`, `TODO.md`, `ROBOT.md`, `version.mjs`, or anything
-under `experiments/` appears in that list, abort — `.wispignore` is not being
-applied, and source mockups would be published.
+If `deploy` reports any other count, something outside that list was published.
+Find it and confirm from the origin rather than guessing — anything excluded
+should 404:
+
+```sh
+for f in README.md TODO.md ROBOT.md version.mjs .gitignore test.png; do
+  echo "$(curl -s -o /dev/null -w '%{http_code}' \
+    "https://dcwahl.wisp.place/$f?cb=$RANDOM")  $f"
+done
+```
+
+Then add the offender to `.wispignore` and deploy again; the new manifest
+replaces the old one, so the stray file stops being served.
 
 Without a custom domain, Wisp serves the site at a URL shaped like:
 
@@ -163,23 +177,26 @@ npx wispctl@latest domain add-site huffsduster.bsky.social \
 
 ### After deploying: the 10-minute cache window
 
-Wisp serves assets with `cache-control: public, max-age=600`. For ten minutes
-after a deploy, a browser that visited recently may hold stale copies — and
-because `index.html` and `styles.css` keep the same paths across deploys, it can
-end up with **new HTML and old CSS at the same time**. That renders as an
-unstyled page (visible `<h1>`, blue link, serif type, wrong background) and
-looks far worse than merely being out of date.
+Wisp serves assets with `cache-control: public, max-age=600`, so for ten
+minutes after a deploy a browser that visited recently may hold stale copies.
 
-It is not a broken deploy. Hard-reload (`Cmd-Shift-R`) or use a private window.
-To check the origin rather than your cache:
+The dangerous version of this — **new HTML paired with old CSS**, which renders
+as an unstyled page (visible `<h1>`, blue link, serif type, wrong background)
+and looks far worse than merely being out of date — is fixed. `version.mjs`
+stamps `?v=N` onto every asset URL, so a stale `index.html` always asks for the
+assets that match it, and a fresh one asks for URLs no cache has seen. This is
+why the version bump is not optional.
+
+What remains is ordinary staleness: `index.html` itself keeps the same path, so
+a recent visitor may see the whole previous version of the site for up to ten
+minutes. Hard-reload (`Cmd-Shift-R`) or use a private window. To check the
+origin rather than your cache:
 
 ```sh
-curl -s "https://dcwahl.wisp.place/styles.css?cb=$RANDOM" | head -3
+curl -s "https://dcwahl.wisp.place/index.html?cb=$RANDOM" | grep -o '?v=[0-9]*' | sort -u
 ```
 
-A durable fix would be to version the asset URLs (`styles.css?v=3`,
-`room.js?v=3`) so a stale HTML file always references the assets that match it.
-Tracked in `TODO.md`.
+That should print the version `node version.mjs --check` reports locally.
 
 ## Publish boundary
 
@@ -190,8 +207,9 @@ deny-listed rather than allow-listed: **a new file at the root is public by
 default.**
 
 Add source art, notes, and studies to `.wispignore` as they are created, not at
-deploy time. Currently excluded: `README.md`, `TODO.md`, `.claude/`, `.DS_Store`,
-`experiments/`, and every source mockup and door trace.
+deploy time. Currently excluded: `README.md`, `TODO.md`, `ROBOT.md`,
+`version.mjs`, `.claude/`, `.gitignore`, `.DS_Store`, `experiments/`, and every
+source mockup and door trace.
 
 Public Wisp sites are stored through the AT Protocol account and indexed from
 the firehose. A custom `wisp.place` subdomain is a nicer address, but it should
