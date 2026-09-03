@@ -24,16 +24,18 @@ follows from `DOOR_PLACEMENT`.
 - [x] The visual entrance exists: clicking **about** opens the door, reveals the
       robot, and walks him to centre frame. Loading `#about` starts it directly;
       reduced motion jumps to the arrived pose.
-- [ ] Needs actual content — bio, contact. Contact lives here rather than as its
-      own nav item; if other work gets hosted it goes under "selected work". The
-      copy in the paper study is placeholder.
+- [x] Needs actual content — bio, contact. Landed. Contact is the email on the
+      sheet rather than its own nav item; if other work gets hosted it goes
+      under "selected work".
 - [x] Decide how the robot presents that content. He walks nearly into the lens
       and holds up a sheet; the copy is real DOM text mapped onto the sheet's
       projected corners, so it stays selectable and accessible. Studied in
       `experiments/tools/paper-sequence.html`. See "The paper" in `ROBOT.md`.
-- [ ] Wire the paper into `about.js`. Nothing of the study has landed on the
-      live page yet, and `REACH_LIMITS.max` in `walk.js` has to be overturned or
-      bypassed to let him come that close.
+- [x] Wire the paper into `about.js`. Done, by extracting the shared half into
+      `paper.js` so the study and the site cannot drift. `REACH_LIMITS` is not
+      bypassed so much as unused: `planPaper` aims down the camera axis and
+      centres on the perpendicular, which is the thing `reach` could not
+      express, so the cap never applies to this walk.
 - [x] Decide where the sheet comes from. He picks it up off something below the
       frame: it is born lying flat, which puts it genuinely off-screen, and
       opens as it rises. Lowering the arms alone never hides it — the top edge
@@ -43,10 +45,12 @@ follows from `DOOR_PLACEMENT`.
       camera and off the left edge. He cannot walk *into* the lens — he is
       shorter than the camera, so head-on he engulfs the frame instead of
       leaving it. See "Walking back out" in `ROBOT.md`.
-- [ ] Wire the close into `about.js` along with the paper. Settled in the
-      study: it behaves as a modal — click away, ×, or Escape dismisses, the
-      sheet itself is excluded so the copy stays selectable, and a dismissal
-      during the entrance is honoured once he is up rather than dropped.
+- [x] Wire the close into `about.js` along with the paper.
+- [x] Make `#about` a real route: linkable, and Back closes it.
+- [x] Hold off new paper planes while the sheet is up, letting any plane already
+      in the air finish.
+- [ ] Check the copy actually fits the sheet. `TYPE` in `about.js` is a guess
+      sized to the current bio by arithmetic, not by looking; `?type=` retunes.
 - [ ] Idea, parked: something animating on the sheet itself — the paper is a
       surface we control completely, so there is room for a bit of whimsy on it.
 - [x] Revisit repeat/skip behavior. No skip: a **speed up** link appears on the

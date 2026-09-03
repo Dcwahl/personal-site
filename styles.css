@@ -134,3 +134,148 @@ h1 {
   height: 100%;
   pointer-events: none;
 }
+
+/* ── the sheet he holds up ────────────────────────────────────────── */
+
+/*
+ * A box that about.js maps onto the drawn paper's projected corners with a
+ * matrix3d homography, so the copy sits in the room's perspective and is still
+ * real, selectable text.
+ *
+ * Its width and height are set from JS in real screen pixels — the resting
+ * sheet's true size — and never changed. A layer under a 3D transform
+ * rasterises at its own size and is then scaled as a bitmap, so a small box
+ * blown up renders the type as a grey smear; at the true size the resting scale
+ * is exactly 1.00x. Everything inside is in `em` off that, so the copy tracks
+ * the viewport the way the sheet does.
+ */
+.sheet {
+  position: fixed;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  display: none;
+  pointer-events: none;
+  font-size: 11px;
+}
+
+.sheet--on {
+  display: block;
+}
+
+/* Clickable only once he is actually holding it up. While it is riding into
+   frame a click belongs to the backdrop, not to the paper. */
+.sheet--live {
+  pointer-events: auto;
+}
+
+/* Set as a sheet of paper, not as a UI panel: generous margins, a measure that
+   stops well short of the edge, and the label doing the work the masthead's
+   letterspacing does elsewhere. */
+.sheet__inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  padding: 8% 9%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  font: 1em/1.75 "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+}
+
+.sheet__label {
+  margin: 0 0 1.6em;
+  font-size: 0.73em;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0.55;
+}
+
+.sheet__inner p {
+  margin: 0 0 1.15em;
+}
+
+.sheet__inner p:last-child {
+  margin: 0;
+}
+
+.sheet__sign {
+  margin-top: 1.6em;
+  padding-top: 1.1em;
+  border-top: 0.09em solid rgb(23 20 15 / 22%);
+  align-self: start;
+  padding-right: 3em;
+}
+
+/* The close control lives *on* the paper, so it tilts and rides with it under
+   the same homography as the copy. Square to the screen it would be a second,
+   unrelated piece of modal chrome; on the sheet it belongs to the thing it
+   closes. In `em`, so it tracks the viewport the way the type does. */
+.sheet__close {
+  position: absolute;
+  top: 2.4em;
+  right: 2.6em;
+  width: 1.9em;
+  height: 1.9em;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 1.15em/1 ui-monospace, monospace;
+  cursor: pointer;
+  opacity: 0.4;
+  transition: opacity 0.2s ease;
+}
+
+.sheet__close:hover,
+.sheet__close:focus-visible {
+  opacity: 0.9;
+}
+
+/* Offered only on a second visit, and only while he is still on his way in. A
+   first-time viewer is watching the thing the page is for; a returning one has
+   seen it and is here for the copy. */
+.hurry {
+  position: fixed;
+  z-index: 3;
+  inset: auto max(2.75rem, env(safe-area-inset-right))
+    max(2rem, env(safe-area-inset-bottom)) auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: 0.8125rem/1 inherit;
+  letter-spacing: 0.04em;
+  text-decoration: underline;
+  text-underline-offset: 0.3em;
+  cursor: pointer;
+  display: none;
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.hurry--on {
+  display: block;
+  opacity: 0.5;
+}
+
+.hurry:hover,
+.hurry:focus-visible {
+  opacity: 1;
+}
+
+.sheet__sign a {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 0.06em solid rgb(23 20 15 / 35%);
+  padding-bottom: 0.15em;
+}
+
+.sheet__sign a:hover,
+.sheet__sign a:focus-visible {
+  border-bottom-color: var(--ink);
+}

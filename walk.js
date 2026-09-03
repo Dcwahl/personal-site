@@ -490,8 +490,39 @@ export function extendRoute(route, exit, along = exit.length) {
  * front of the lens, and it widens the arc only if that never happens.
  */
 export function planExit(robot, route, scene, options = {}) {
-  const { margin = 0.5, turn = 30, spans = [4, 5, 6, 7], resolution = 0.02 } = options;
+  const {
+    margin = 0.5,
+    /* Tried in order, gentlest first, so the motion stays as easy as the
+     * viewport allows. How sharply he has to turn depends on how close he
+     * finished: from the far side of the room 30 degrees clears the frame
+     * everywhere, but from the near arrival the paper study walks him to — 2.4
+     * door-heights, where he fills most of the picture — a shallow turn keeps
+     * him crossing the frame long enough to reach the lens first, and 2560,
+     * 3840 and 844x390 all fail at 30. 50 clears every viewport tested. */
+    turns = [30, 40, 50, 65],
+    spans = [4, 5, 6, 7],
+    resolution = 0.02,
+    /* One step's ground, if the exit should land on a whole number of them.
+     * Rounding *outside* this function quietly walks him past the point that
+     * was checked — up to a step closer to the lens than the margin allows —
+     * so the rounding belongs in here, where the rounded point can be verified
+     * too. */
+    step = null,
+  } = options;
   const toScreen = mockupToScreen(scene);
+
+  /** Is every vertex still `margin` in front of the lens at this point? */
+  const clearOfLens = (exit, along) => {
+    const here = exit.at(along);
+    for (const solid of placeRobot(robot, { ...here, facing: here.heading, travel: 0 })) {
+      for (const quad of solid.quads) {
+        for (const vertex of quad.points) {
+          if (toCameraSpace(vertex).z < margin) return false;
+        }
+      }
+    }
+    return true;
+  };
 
   const goneAt = (exit) => {
     for (let along = 0; along <= exit.length; along += resolution) {
@@ -517,10 +548,19 @@ export function planExit(robot, route, scene, options = {}) {
     return null;
   };
 
-  for (const span of spans) {
-    const exit = exitRoute(route, { turn, span });
-    const along = goneAt(exit);
-    if (along !== null) return { exit, along, span, turn };
+  for (const turn of options.turn !== undefined ? [options.turn] : turns) {
+    for (const span of spans) {
+      const exit = exitRoute(route, { turn, span });
+      const found = goneAt(exit);
+      if (found === null) continue;
+
+      if (step === null) return { exit, along: found, steps: found / step, span, turn };
+
+      const steps = Math.ceil(found / step);
+      const along = Math.min(steps * step, exit.length);
+      if (!clearOfLens(exit, along)) continue;
+      return { exit, along, steps, span, turn };
+    }
   }
   return null;
 }

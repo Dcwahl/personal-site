@@ -50,6 +50,29 @@
       -->
       <canvas class="stage stage--robot" aria-hidden="true"></canvas>
       <canvas class="stage stage--plane" aria-hidden="true"></canvas>
+
+      <!--
+        The copy he holds up. Real DOM text, not canvas: about.js maps this box
+        onto the drawn sheet's four projected corners every frame with a
+        matrix3d homography, so it sits in the room's perspective while staying
+        selectable, searchable and readable by a screen reader. Sized in px from
+        JS to the sheet's true resting size, with everything inside in `em`.
+      -->
+      <div class="sheet">
+        <div class="sheet__inner">
+          <button class="sheet__close" type="button" aria-label="Close">&#215;</button>
+          <p class="sheet__label">About</p>
+          <p>Howdy! I&rsquo;m Diego, a fullstack developer.</p>
+          <p>Right now I mostly sling Node microservices. Usually Lambdas behind
+            GraphQL, deployed to AWS with Serverless Framework. I touch Jenkins a
+            lot. React for front end stuff, Flask or FastAPI when it&rsquo;s
+            Python.</p>
+          <p>Lately a lot of LLM harness tinkering.</p>
+          <p class="sheet__sign"><a href="mailto:diegowahl@gmail.com">diegowahl@gmail.com</a></p>
+        </div>
+      </div>
+
+      <button class="hurry" type="button">speed up</button>
     </main>
 
     <script type="module" src="room.js"></script>

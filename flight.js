@@ -44,6 +44,27 @@ let trailDots = [];
 let currentCycle = -1;
 let animationFrame;
 
+/* ── holding off while the about sequence is up ───────────────────── */
+
+/* A plane crossing the room competes with someone reading, so no new one
+ * enters while the sheet is up. Any plane already in the air finishes its path,
+ * though — cutting one off mid-glide would be a more distracting event than
+ * the plane was.
+ *
+ * There is no discrete spawn to skip: the flight is a continuous cycle read off
+ * one clock, so a plane "starts" simply by the cycle counter ticking over. The
+ * way to withhold one is therefore to withhold the clock — pin elapsed time one
+ * millisecond short of the next cycle boundary, which is deep in the tail where
+ * the last trail has already faded to nothing and the frame draws empty. The
+ * current flight is untouched because the pin only bites at the boundary, which
+ * it cannot reach until that flight is over.
+ *
+ * When the hold lifts, the clock steps over the boundary on the next frame and
+ * a plane enters straight away, rather than the page owing the viewer up to a
+ * full cycle of empty sky. */
+let holding = false;
+let heldFor = 0;
+
 function createFlightProfile() {
   return {
     oscillations: 1.15 + Math.random() * 0.25,
@@ -275,7 +296,18 @@ function render(now) {
     return;
   }
 
-  const elapsed = now - startTime;
+  let elapsed = now - startTime - heldFor;
+  /* `currentCycle` is -1 until the first frame has run, and there is nothing to
+   * hold before a flight exists — so on a deep link straight into the sequence
+   * the first plane still flies, and the one after it is the one withheld. */
+  if (holding && currentCycle >= 0) {
+    const limit = (currentCycle + 1) * cycleDuration - 1;
+    if (elapsed > limit) {
+      heldFor += elapsed - limit;
+      elapsed = limit;
+    }
+  }
+
   const cycle = Math.floor(elapsed / cycleDuration);
   const cycleTime = elapsed % cycleDuration;
 
@@ -307,6 +339,13 @@ window.addEventListener("resize", () => {
   restartAnimation();
 });
 reducedMotion.addEventListener("change", restartAnimation);
+
+window.addEventListener("about:open", () => {
+  holding = true;
+});
+window.addEventListener("about:close", () => {
+  holding = false;
+});
 
 // Live tweaking from the console: window.trail.style.length = 4; then
 // window.trail.rebuild() if you changed spacing.

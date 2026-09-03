@@ -13,11 +13,16 @@ on an arc across the floor, raises his arms once clear of the doorway, closes
 the door behind him, and arrives facing the camera on a feet-together, upright
 beat. The route and cadence size themselves to the viewport.
 
-Not built: the shuffle gait, and the about content is a study rather than a
-shipped thing — `experiments/tools/paper-sequence.html` plays the whole
-entrance-to-reading sequence with the sheet in his hands, but nothing of it has
-been wired into `about.js` yet. The interaction still needs a proper
-accessibility and repeat-visit pass.
+The paper landed too. Clicking **about** now runs the whole thing on the live
+page: he comes almost into the lens, picks a sheet up from below the frame and
+holds it out with the real bio on it, waits, and walks off past the camera when
+dismissed. `#about` is a real route, so it is linkable and Back closes it.
+
+The study and the site share `paper.js` rather than a copy of it, so they cannot
+drift; `experiments/tools/paper-sequence.html` is still where any of it gets
+felt.
+
+Not built: the shuffle gait, and portrait.
 
 | File | Role |
 | --- | --- |
@@ -25,7 +30,8 @@ accessibility and repeat-visit pass.
 | `robot.js` | Parametric robot, gait, and the line renderer |
 | `walk.js` | Choreography: the route from behind the door through the turn |
 | `door.js` | Projects the swinging door panel through the room camera |
-| `about.js` | Site choreography: reveal, walk, door close, and settle |
+| `paper.js` | The near-lens walk, the sheet, and the DOM homography |
+| `about.js` | Site choreography and modal state, end to end |
 | `experiments/tools/robot-tuner.html` | Live control of every parameter |
 | `experiments/tools/paper-sequence.html` | The paper study: the full sequence, end to end |
 | `experiments/tools/paper-probe.html` | The paper study: one static pose, on sliders |
@@ -41,11 +47,13 @@ renders one deterministic frame (`?t=99` is the final one), and `?near=`,
 sheet's width, whether the sheet could be hidden below the frame, the DOM box's
 scale factor, and how far off centre the final composition lands.
 
-On the site, `?door=40` holds the door at a chosen angle and `?about=0.4`
-holds the robot four tenths of the way along the walk. `?entry=0` holds the
-actual start behind the far jamb, `?entry=0.35` holds its first readable peek,
-and `?entry=0&xray=1` shows the otherwise occluded starting pose. Those are
-inspection hooks for screenshots, not public controls.
+On the site, `?door=40` holds the door at a chosen angle, `?about=0.4` holds the
+robot four tenths of the way along the walk, `?read=1` is the finished frame with
+the sheet up, `?entry=0` holds the actual start behind the far jamb, `?entry=0.35`
+its first readable peek, and `?entry=0&xray=1` the otherwise occluded starting
+pose. `?cadence=`, `?hurry=` and `?type=` retune the pace, the speed-up
+multiplier and the size of the copy. Inspection hooks for screenshots, not
+public controls.
 
 ## Site integration
 
@@ -524,6 +532,61 @@ only if that never happens.
   the type at 9.1px. Landscape carries the copy on the paper; portrait needs
   either a flatten-to-panel fallback or the separate composition already tabled
   in `TODO.md`.
+
+## On the live page
+
+- **`paper.js` is the shared middle.** It owns the destination solve, the sheet's
+  geometry and the homography. Both the study and `about.js` call `planPaper`,
+  so tuning one tunes the other. Extracted rather than copied precisely because
+  a copy would have drifted the first time either changed.
+
+- **`#about` is the state.** `hashchange` is the only thing that opens or closes
+  it. Opening lets the anchor navigate normally, which pushes a history entry,
+  so Back pops it and closes. Dismissing *replaces* that entry rather than
+  pushing a clean one — pushing would leave `#about` in the history and Back
+  would reopen what you just closed.
+
+- **The arms still come down through the doorway.** The study never addressed
+  this because it was studying the paper; the live page had already solved it,
+  and at 42° he is 1.041 wide against a 0.940 opening. So the beat survives: arms
+  down through the aperture, up once clear, down again to pick up the sheet.
+
+- **No new paper planes while the sheet is up.** There is no discrete spawn to
+  suppress — the flight is a continuous cycle read off one clock, and a plane
+  "starts" by the cycle counter ticking over. So `flight.js` withholds the
+  *clock*: it pins elapsed time one millisecond short of the next cycle
+  boundary, which is deep in the tail where the last trail has already faded and
+  the frame draws empty. A plane already in the air is untouched, because the
+  pin cannot bite until that flight is over. When the hold lifts the clock steps
+  over the boundary on the next frame and a plane enters straight away, rather
+  than the page owing the viewer a cycle of empty sky.
+
+- **`planExit` escalates the turn.** 30° clears the frame from the far side of
+  the room but not from the near arrival, where he fills most of the picture: at
+  2560x1080, 3840x1080 and 844x390 a shallow turn keeps him crossing the frame
+  long enough to reach the lens first. It now tries 30, 40, 50, 65 and takes the
+  gentlest that works — 30° on most, 40° on wide, 50° on superwide.
+
+- **`planExit` quantises internally.** Rounding the exit up to whole steps
+  *outside* it quietly walked him past the point that had been checked, up to a
+  step nearer the lens than the margin allows. The rounding belongs where the
+  rounded landing can be verified too.
+
+| viewport | steps in | steps out | turn | nearest vertex to the lens |
+| --- | --- | --- | --- | --- |
+| iPhone portrait 390x844 | 26 | 6 | 30° | 0.73 |
+| iPad portrait 820x1180 | 26 | 6 | 30° | 0.72 |
+| iPhone landscape 844x390 | 28 | 6 | 50° | 0.69 |
+| 1200x800 | 27 | 6 | 40° | 0.67 |
+| laptop 1440x900 | 27 | 7 | 40° | 0.51 |
+| 1080p 1920x1080 | 27 | 7 | 40° | 0.57 |
+| ultrawide 2560x1080 | 28 | 7 | 40° | 0.54 |
+| superwide 3840x1080 | 30 | 7 | 50° | 0.52 |
+
+- **The type size is a function of how much copy there is.** The box is fixed
+  and the text is centred in it, so anything too long spills off the paper
+  rather than scrolling. `TYPE` in `about.js` is set for the current bio;
+  `?type=` retunes it. Worth re-checking whenever the words change.
 
 ## Open
 

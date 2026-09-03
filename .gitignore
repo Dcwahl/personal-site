@@ -4,6 +4,9 @@ node_modules/
 # Per-machine Claude Code preferences
 .claude/settings.local.json
 
+# Claude Code worktrees are checkouts of this same repo
+.claude/worktrees/
+
 # Python bytecode from experiments/tools/imgprobe
 __pycache__/
 *.pyc
