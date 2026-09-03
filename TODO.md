@@ -80,12 +80,12 @@ follows from `DOOR_PLACEMENT`.
 
 ## Deploy
 
-- [ ] Version the asset URLs (`styles.css?v=N`, `room.js?v=N`, ...) so a stale
-      cached `index.html` can never pair with fresh assets, or vice versa. Wisp
-      sends `max-age=600`, so for ten minutes after each deploy a returning
-      visitor can get new HTML with old CSS, which renders as a completely
-      unstyled page. Bumping N per deploy makes the failure consistent-but-old
-      instead of mixed-and-broken.
+- [x] Version the asset URLs so a stale cached `index.html` can never pair with
+      fresh assets. `node version.mjs` stamps `?v=N` onto the tags in
+      `index.html` and onto every relative import between the modules — the
+      entry points alone would not have been enough, since a versioned
+      `about.js` still imports `./paper.js`. Run it before each deploy; the
+      README has it in the publish steps.
 
 ## Art
 

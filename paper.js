@@ -13,14 +13,14 @@
  * view axis and centred by sliding along that axis's perpendicular.
  */
 
-import { buildRobot, placeRobot, robotDefaults, robotPresets } from "./robot.js";
-import { buildRoute, doorRoute, stepLength, headingToCamera, START_PHASE } from "./walk.js";
+import { buildRobot, placeRobot, robotDefaults, robotPresets } from "./robot.js?v=1";
+import { buildRoute, doorRoute, stepLength, headingToCamera, START_PHASE } from "./walk.js?v=1";
 import {
   mockupToScreen,
   toCameraSpace,
   projectCameraSpace,
   CAMERA_IN_ROOM,
-} from "./camera.js";
+} from "./camera.js?v=1";
 
 /* ── the poses ────────────────────────────────────────────────────── */
 

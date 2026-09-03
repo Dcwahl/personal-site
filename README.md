@@ -108,24 +108,34 @@ export PATH="$HOME/.nvm/versions/node/v22.19.0/bin:$PATH"
 
 ### Publish an update
 
-Run this from the repository root:
+Two commands, from the repository root. Bump the asset version first, and
+commit it:
 
 ```sh
+node version.mjs
 npx wispctl@latest deploy huffsduster.bsky.social --path . --site dcwahl
 ```
 
+`version.mjs` stamps `?v=N` onto every URL the site loads — the tags in
+`index.html` and every relative import between the modules — so a deploy can
+never pair a stale `index.html` with fresh assets. See "The 10-minute cache
+window" below for what that failure looks like without it. `node version.mjs 7`
+sets a version explicitly and `node version.mjs --check` prints the current one;
+running it twice is the same as running it once.
+
 The `--site dcwahl` is what makes this update the existing site rather than
 creating another one. `deploy` prompts with the file list before uploading;
-read it. Expect **12 files, roughly 110 KB**:
+read it. Expect **13 files**:
 
 ```text
 index.html  styles.css  scene.js   room.js    door.js   camera.js
-robot.js    walk.js    about.js   flight.js  trail.js  door.svg
+robot.js    walk.js     paper.js   about.js   flight.js trail.js
+door.svg
 ```
 
-If any `.png`, `README.md`, `TODO.md`, or anything under `experiments/` appears
-in that list, abort — `.wispignore` is not being applied, and source mockups
-would be published.
+If any `.png`, `README.md`, `TODO.md`, `ROBOT.md`, `version.mjs`, or anything
+under `experiments/` appears in that list, abort — `.wispignore` is not being
+applied, and source mockups would be published.
 
 Without a custom domain, Wisp serves the site at a URL shaped like:
 
