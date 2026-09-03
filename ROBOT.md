@@ -1,7 +1,9 @@
 # Wind-up robot
 
-State of the "click about → robot walks out of the door" interaction. Not
-published; see `.wispignore`.
+State of the "click about → robot walks out of the door" interaction.
+
+The interaction itself ships — it is wired into `index.html`. These notes, the
+studies under `experiments/` and the source art do not; see `.wispignore`.
 
 Branch **`robot`**. `main` is untouched.
 
