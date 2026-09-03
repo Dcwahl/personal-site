@@ -5,7 +5,7 @@ State of the "click about → robot walks out of the door" interaction.
 The interaction itself ships — it is wired into `index.html`. These notes, the
 studies under `experiments/` and the source art do not; see `.wispignore`.
 
-Branch **`robot`**. `main` is untouched.
+Built on branch **`robot`**, merged to `main`.
 
 ## Where it stands
 
