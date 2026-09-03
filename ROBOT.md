@@ -354,21 +354,165 @@ that.
   default; `?crease=0.13` still draws them. The per-marking `alpha` in
   `drawRobot` was added for this and is now unused.
 
+### Settled since
+
+- **Where the sheet comes from: below the camera, and that is the whole
+  answer.** It was treated as a problem to be measured away — the sheet's top
+  edge sits 393px inside the frame when carried, so it provably cannot be born
+  off-screen at any distance that keeps the type readable, and folding was
+  rejected. The measurements are right and the conclusion did not follow: the
+  frame crops him at the chest, so *everything* below his hands is off-screen
+  as far as the viewer is concerned. He reaches down out of frame and comes up
+  with it. Nobody asks where it came from, because they watched him get it.
+
+  This retires the `born` latch in `paper-sequence.html`, which was there to
+  refuse to draw a sheet that appeared inside the picture. (It never worked
+  anyway: it tests a bare `top`, which resolves to `window.top`, so the
+  comparison is `NaN` and the latch never opens. Nothing reads the flag.)
+
+- **Duration: `stepAngle` 34.** Re-run against all three gait checks, against
+  27.5 as the control. Identical on every one — deepest vertex exactly 0, same
+  worst advance delta, skate distributions within noise of each other — at a
+  29% longer stride (0.275 vs 0.214 room units). The caveat in "Numbers that
+  were solved, not chosen" was about not having *checked* 34, not about a
+  reason to expect it to fail, and it passes.
+
+### Walking back out
+
+The close: he puts the sheet back down where it came from, leans into the gait
+again, and leaves past the camera.
+
+**It waits rather than counts.** The study used to run the whole thing off one
+clock, which made the read beat a duration to tune. It is not one — it is a
+modal, and a modal is open until someone closes it. Everything up to the read
+pose is still timed; from there `beats()` returns `end: Infinity` and the loop
+holds the pose. The dismissal is recorded as a *time* on the same clock, not as
+a flag, because everything downstream of it is a timeline again — so `frameAt`
+stays a pure function of `t` plus one number, and `?t=` frames stay
+reproducible.
+
+Three states, two edges: **closed**, and clicking *about* opens it; **open**,
+running the entrance and then holding; **closing**, from the dismissal through
+the walk off and back to closed. A dismissal that arrives while he is still
+walking in is clamped to the read pose rather than dropped, so a click is never
+swallowed.
+
+Dismissed by clicking away, by the ×, or by Escape. The sheet itself is
+excluded from click-away: it is selectable text — the entire reason the copy is
+DOM and not canvas — and a modal that closes when you try to select its
+contents is broken. Click-anywhere-to-replay is gone; space replays.
+
+`?play=0` starts closed, which is the state the real page loads in. `?read=N`
+dismisses him automatically N seconds in, which is the only way to get a
+determinate timeline back for `?t=` frames.
+
+### Laying it down, not cutting it
+
+The first version lowered his arms and stopped drawing the sheet. It read as
+wrong, and the reason is measurable: **lowering the arms cannot put the sheet
+away.** Swept from `armRaise` 140 down to -70, the top edge bottoms out 314px
+*inside* the frame and never gets lower, because dropping his hands moves the
+paper down and toward the lens at once and the two nearly cancel. So it was
+disappearing at very close to full size — cut, not put down.
+
+| `armRaise` | top edge, vs frame bottom |
+| --- | --- |
+| 140 (held up) | −715 |
+| 60 | −449 |
+| 0 | −316 |
+| −12 (carried) | −314 |
+| −70 | −505 |
+
+Tilting it flat is what actually does it, and it is also what the gesture *is*:
+paper you put down goes flat. Rotating toward horizontal foreshortens the sheet
+to a sliver and swings its top edge away from the lens. At `LAY` = −75° the
+whole thing clears the bottom of the frame everywhere tested — 60px to spare on
+the tightest (844x390), 124–167px on the rest — so the moment it stops being
+drawn there is nothing on screen to notice.
+
+The same tilt runs on the way up, on the same progress as the arms: it is born
+flat and below the frame rather than appearing at full size 314px inside it.
+That, not the earlier reasoning about the crop, is what actually answers where
+the sheet comes from — he picks it up off something below, and paper picked up
+off a surface really does rotate as it rises.
+
+The DOM copy is hidden once the quad is under 12px tall or has left the frame,
+where the homography is near-singular and the type would be a smear of its own
+scaling.
+
+### The × and the speed-up
+
+The × lives **on the paper**, inside the transformed box, so it tilts and rides
+with the sheet under the same homography as the copy. Square to the screen it
+would have been a second, unrelated piece of modal chrome. Sized in `em` off
+the sheet's own font size, so it tracks the viewport the way the type does.
+
+A **speed up** link appears on the second open and after, and only while he is
+still on his way in. It scales the *clock*, not the cadence: `frameAt` is a pure
+function of elapsed seconds, so handing it seconds faster speeds him up without
+touching the gait — cadence is welded to the stride, and changing it would put
+his feet back to skating. Rate changes bank the virtual time spent so far and
+restart the measurement, so both formulas agree at the instant of the change and
+nothing jumps. `?hurry=2.2` sets the multiplier.
+
+The reasoning for offering it only on a repeat visit: a first-time viewer is
+watching the thing the page is for. A returning one has seen it and is here for
+the copy. No skip button, though — he is worth watching once.
+
+**He cannot leave by walking into the lens.** This looks like it should work
+and it never can. The camera stands at one door-height and he is 0.4 of one, so
+he is entirely below the horizon — and everything below the horizon projects
+*toward* the horizon as it approaches. Walking straight at the camera his crown
+goes y 446, 441, 435, converging on the horizon line and never crossing it. His
+feet leave the bottom of the frame a step and a half in, and then his head just
+sits in the middle of the picture getting wider until the geometry detonates on
+the camera plane, which `camera.js` has no near plane to catch:
+
+| distance walked past the arrival | box x | box y |
+| --- | --- | --- |
+| 0.0 | 612–853 | 446–799 |
+| 1.2 | 570–884 | 445–906 |
+| 2.8 | 449–973 | 442–1222 |
+| 4.4 | −188–1433 | 428–2966 |
+| 5.2 | −306309–20167 | −250138–397882 |
+
+So he leaves the way anyone walks past you: off to one side. Swept, the turn has
+to be at least 10° to clear the frame at all, and 30° is comfortable:
+
+| turn | off frame after | closest approach to camera |
+| --- | --- | --- |
+| 0–5° | never — reaches the lens first | — |
+| 10° | 15.9 steps | 0.85 |
+| 20° | 12.6 steps | 1.88 |
+| **30°** | **10.9 steps** | **2.58** |
+| 40° | 9.4 steps | 3.07 |
+
+`exitRoute` builds it as an arc, not a pivot, for the reason `aimedHandle`
+gives — a clockwork walker turns by walking. Its first handle runs along the
+arrival heading, so the exit leaves tangent to the walk that fed it.
+
+`planExit` **scans forward rather than bisecting**, and that is not a style
+choice. Off-screen is not monotone in distance: he leaves the frame, and then,
+on a long enough arc, passes behind the camera, where the projection inverts and
+every predicate about pixels goes meaningless. A bisection reads that far side
+as "not gone" and walks its bracket into it — which is exactly what the first
+version did, returning a distance with the nearest vertex 0.23 in front of the
+lens and the robot still filling the screen. It takes the *first* arc length at
+which he is off frame with every vertex still 0.5 in front, and widens the arc
+only if that never happens.
+
+| viewport | steps out | at 4/s | nearest vertex to the lens |
+| --- | --- | --- | --- |
+| iPhone portrait 390x844 | 9 | 2.25s | 4.50 |
+| iPad portrait 820x1180 | 10 | 2.50s | 4.56 |
+| iPhone landscape 844x390 | 11 | 2.75s | 1.67 |
+| 1200x800 | 12 | 3.00s | 2.49 |
+| laptop 1440x900 | 12 | 3.00s | 2.27 |
+| 1080p 1920x1080 | 12 | 3.00s | 2.06 |
+| ultrawide 2560x1080 | 11 | 2.75s | 1.48 |
+| superwide 3840x1080 | 12 | 3.00s | 0.87 |
+
 ### Still open
-
-- **Where the sheet comes from.** He walks in empty-handed and the paper exists
-  in his hands a beat later. Carried at his side the full sheet's top edge sits
-  **393px inside** the frame — it cannot be born off-screen. Measured across
-  distances: 255px in at 2.33, 188px at 1.80, 55px even at 1.28 where he is
-  essentially all head. Only a folded slip at about a fifth of the height
-  (`sheetH` 0.09) clears, by 17px, and folding is out. So this is unanswered:
-  either accept the pop, hand it to him some other way, or reach off-frame.
-
-- **Duration.** 10.35s end to end at cadence 4 and `stepAngle` 27.5 (34 steps,
-  8.50s of it walking). Overlapping the hidden 3.4-step entry with the door
-  swing was free and is already taken. `stepAngle` 34 cuts it to 27 steps and
-  **8.47s**, but that is above the verified stride and has not been re-run
-  against the skate, floor and monotonic-advance checks.
 
 - **Portrait.** At 390px wide the sheet caps at about 85% of the viewport and
   the type at 9.1px. Landscape carries the copy on the paper; portrait needs

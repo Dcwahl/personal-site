@@ -23,10 +23,47 @@
         font-size: 11px;
       }
       .sheet-dom.on { display: block; }
+      /* The copy is the one thing a click must not dismiss — it is selectable
+         text, which is the whole reason it is DOM and not canvas. */
+      .sheet-dom.grabbable { pointer-events: auto; }
+
+      /* The close control lives *on* the paper, so it tilts and rides with it
+         under the same homography as the copy. A × floating square to the
+         screen would be a second, unrelated modal chrome; on the sheet it
+         reads as belonging to the thing it closes. It scales in `em` off the
+         sheet's own font size, so it tracks the viewport the way the type
+         does. */
+      .sheet-dom__close {
+        position: absolute; top: 2.4em; right: 2.6em;
+        width: 1.9em; height: 1.9em;
+        display: grid; place-items: center;
+        border: 0; padding: 0; background: none;
+        color: var(--ink); cursor: pointer;
+        font: 1.15em/1 ui-monospace, monospace;
+        opacity: 0.4; transition: opacity 0.2s ease;
+      }
+      .sheet-dom__close:hover, .sheet-dom__close:focus-visible { opacity: 0.9; }
+
+      /* Only ever offered on a second visit, and only while he is still on his
+         way in. A first-time viewer is watching the thing the page is for; a
+         returning one has seen it and is here for the copy. */
+      .hurry {
+        position: fixed; z-index: 6;
+        inset: auto max(2.75rem, env(safe-area-inset-right))
+          max(2rem, env(safe-area-inset-bottom)) auto;
+        border: 0; padding: 0; background: none;
+        color: inherit; cursor: pointer;
+        font: 0.8125rem/1 inherit; letter-spacing: 0.04em;
+        text-decoration: underline; text-underline-offset: 0.3em;
+        display: none; opacity: 0; transition: opacity 0.4s ease;
+      }
+      .hurry.on { display: block; opacity: 0.5; }
+      .hurry:hover, .hurry:focus-visible { opacity: 1; }
       /* Set as a sheet of paper, not as a UI panel: generous margins, a
          measure that stops well short of the edge, and the label doing the
          work the masthead's letterspacing does elsewhere on the site. */
       .sheet-dom__inner {
+        position: relative;
         width: 100%; height: 100%;
         padding: 8% 9%;
         display: flex; flex-direction: column; justify-content: center;
@@ -49,6 +86,11 @@
   </head>
   <body>
     <main>
+      <header class="masthead">
+        <span class="wordmark" aria-hidden="true">Diego Wahl</span>
+        <a href="#about" id="about-link">about</a>
+      </header>
+
       <div class="room" aria-hidden="true">
         <svg class="room__doorway">
           <defs><clipPath id="doorway-clip"><path data-door="clip" /></clipPath></defs>
@@ -64,6 +106,7 @@
       <canvas class="stage stage--robot" aria-hidden="true"></canvas>
       <div class="sheet-dom">
         <div class="sheet-dom__inner">
+          <button class="sheet-dom__close" id="dismiss" type="button" aria-label="Close">&#215;</button>
           <p class="sheet-dom__label">About</p>
           <p>Diego Wahl is a designer working on interfaces, systems, and the
             occasional paper aeroplane.</p>
@@ -72,6 +115,7 @@
           <p class="sheet-dom__sign">hello@example.com</p>
         </div>
       </div>
+      <button class="hurry" id="hurry" type="button">speed up</button>
     </main>
 
     <div class="hud" id="hud"></div>
@@ -84,11 +128,15 @@
       import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js";
       import {
         buildRoute, doorRoute, stepLength, routePose, headingToCamera, START_PHASE,
+        extendRoute, planExit,
       } from "../../walk.js";
 
       const canvas = document.querySelector(".stage--robot");
       const ctx = canvas.getContext("2d");
       const domSheet = document.querySelector(".sheet-dom");
+      const dismissButton = document.getElementById("dismiss");
+      const hurryButton = document.getElementById("hurry");
+      const aboutLink = document.getElementById("about-link");
       const query = new URLSearchParams(location.search);
       const num = (name, fallback) => {
         const v = Number(query.get(name));
@@ -103,6 +151,18 @@
       const CARRY = num("carry", -12);       // arms at his sides, below frame
       const ENTRY_STEPS = 3.4;
       const CREASE = num("crease", 0);      // fold lines, off; ?crease=0.13 to look again
+      /* He holds it up until he is dismissed, the way a modal waits. `?read=N`
+       * dismisses him automatically N seconds in, which is the only way to get
+       * a determinate timeline back for `?t=` frames and for watching the
+       * whole thing end to end without touching anything. */
+      const AUTO_READ = query.has("read") ? num("read", 2.6) : null;
+      /* Opens itself on load, because reloading a tuned URL is how this file
+       * gets used. `?play=0` starts closed, which is the state the real page
+       * loads in and the only way to exercise the click that opens it. */
+      const AUTOPLAY = num("play", 1) !== 0;
+      /* How much faster "speed up" runs him. Fast enough to be worth pressing,
+       * short of the point where the gait reads as a cartoon scramble. */
+      const HURRY_RATE = num("hurry", 2.2);
       const HANDLE = num("handle", 0.45);   // final tangent handle, as a fraction of the span
 
       const base = {
@@ -111,6 +171,22 @@
         height: num("height", robotPresets["D mild"].height ?? robotDefaults.height),
       };
       const SHEET = { grip: num("grip", 1.0), height: num("sheetH", 0.60), out: 0.15, tilt: -12 };
+
+      /* The angle he lays it back down to.
+       *
+       * Lowering the arms alone can never put the sheet away: sweep `armRaise`
+       * from 140 all the way to -70 and the top edge bottoms out 314px *inside*
+       * the frame, because dropping his hands moves the paper down and toward
+       * the camera at the same time and the two nearly cancel. So it vanished
+       * at very close to full size, which is what read as wrong — it was cut,
+       * not put down.
+       *
+       * Tilting it flat is what actually does it. Rotating toward horizontal
+       * foreshortens the sheet to a sliver and swings its top edge away from
+       * the lens, and at -75 the whole thing sits below the frame with 60px to
+       * spare on the tightest viewport tested (844x390) and 124-167px on the
+       * rest. It also *is* the gesture: paper you put down goes flat. */
+      const LAY = num("lay", -75);
 
       /* ── where he ends up ────────────────────────────────────────── */
 
@@ -238,7 +314,7 @@
          * unseen — the "he picked it up from down there" read. Above means a
          * visible pop, and no amount of timing fixes that. */
         const low = buildRobot({ ...base, phase: START_PHASE, armRaise: CARRY });
-        low.parts.push({ name: "sheet", quads: sheetQuads(low) });
+        low.parts.push({ name: "sheet", quads: sheetQuads(low, LAY) });
         const toScreen = mockupToScreen(getScene());
         const lowSheet = placeRobot(low, { ...to, facing: headingToCamera(to), travel: 0 })
           .find((q) => q.name === "sheet");
@@ -257,7 +333,23 @@
           h: Math.hypot(restPts[3].x - restPts[0].x, restPts[3].y - restPts[0].y),
         };
 
-        return { route, to, distance, steps, seconds: steps / CADENCE, step,
+        /* Walking out is the same instruction as walking in. The route's end
+         * tangent is already aimed at the lens — that is what `arrive:
+         * "camera"` bought — so the exit is that line continued, and there is
+         * no second path to design, tune or keep in step with the first.
+         *
+         * Whole steps here too. He is leaving, so nobody is going to measure
+         * where he stops, but the arithmetic downstream is all in half-cycles
+         * and a fractional tail would put the wind-out on a straddle. */
+        const leaving = buildRobot({ ...base, phase: START_PHASE, armRaise: CARRY });
+        const away = planExit(leaving, route, getScene());
+        const exitSteps = away ? Math.ceil(away.along / step) : 0;
+        const full = away
+          ? extendRoute(route, away.exit, Math.min(exitSteps * step, away.exit.length))
+          : route;
+
+        return { route: full, to, distance, steps, exitSteps, turn: away?.turn ?? 0,
+                 seconds: steps / CADENCE, step,
                  carriedTop, sheetWide, sheetBox };
       }
 
@@ -273,6 +365,10 @@
         settle: 0.2,
         reachDown: 0.45,
         lift: 0.75,
+        /* Lowering it takes longer than picking it up did. Reaching down is a
+         * grab and the eye follows his hands; putting it away is the end of
+         * the beat and wants to feel unhurried. */
+        lower: 0.7,
       };
 
       const ease = (t) => 1 - (1 - t) * (1 - t) * (1 - t);
@@ -292,7 +388,30 @@
          * so it never "appears" — it rides up into the frame from below, the
          * way words on a real held-up sign do. The only thing that was ever
          * animating was our own confidence that the viewer had seen it. */
-        return { walkAt, settleAt, downAt, liftAt, end: liftAt + T.lift + 0.25 };
+        const readAt = liftAt + T.lift;
+
+        /* Everything up to here runs on a clock. Everything after it waits.
+         * He holds the sheet up until he is dismissed, so until that happens
+         * the sequence has no end — which is the honest description of a
+         * modal. `end` is Infinity and the loop keeps running the read pose. */
+        if (dismissedAt === null) {
+          return { walkAt, settleAt, downAt, liftAt, readAt, end: Infinity };
+        }
+
+        /* He puts it back where it came from, then leaves the way he came in:
+         * lean into the gait first, walk second. Same wind-up as the entrance,
+         * because it is the same toy and it only knows one way to start.
+         *
+         * Clamped to `readAt` so a dismissal that lands while he is still
+         * walking in is honoured the moment he is up, rather than swallowed.
+         * A click on a modal should always do something. */
+        const lowerAt = Math.max(dismissedAt, readAt);
+        const leaveAt = lowerAt + T.lower;
+        const exitAt = leaveAt + T.windUp;
+        return {
+          walkAt, settleAt, downAt, liftAt, readAt, lowerAt, leaveAt, exitAt,
+          end: exitAt + plan.exitSteps / CADENCE + 0.3,
+        };
       }
 
       function frameAt(t) {
@@ -311,29 +430,61 @@
         const windUp = clamp01((t - (b.walkAt - T.windUp)) / T.windUp);
         const cycles = START_PHASE + Math.max(0, walked) * (CADENCE / 2);
         const finish = START_PHASE + plan.steps / 2;
-        const phase = Math.min(cycles, finish);
+
+        /* The exit is more of the same route, so it is more of the same phase.
+         * Distance along it is still spent by the gait and never set, which is
+         * the only reason his feet stay planted on the way out too. */
+        const leaving = b.exitAt !== undefined && t > b.exitAt;
+        const exitWalked = leaving ? t - b.exitAt : 0;
+        const phase = Math.min(cycles, finish) + exitWalked * (CADENCE / 2);
+        const gone = phase >= finish + plan.exitSteps / 2;
 
         const settle = clamp01((t - b.settleAt) / T.settle);
-        const rock = walked <= 0 ? windUp : (phase < finish ? 1 : (1 - settle) ** 2);
+        // Leaving reverses the settle: the lean comes back before the first step.
+        const relean = b.leaveAt === undefined ? 0 : clamp01((t - b.leaveAt) / T.windUp);
+        const rock = walked <= 0
+          ? windUp
+          : cycles < finish ? 1
+          : relean > 0 ? relean
+          : (1 - settle) ** 2;
 
-        // Arms: 42 through the walk, down to the sides, then up holding it.
+        // Arms: 42 through the walk, down to the sides, up holding it, down again.
         const down = clamp01((t - b.downAt) / T.reachDown);
         const up = clamp01((t - b.liftAt) / T.lift);
-        const armRaise = up > 0
-          ? CARRY + (HOLD - CARRY) * ease(up)
-          : robotDefaults.armRaise + (CARRY - robotDefaults.armRaise) * ease(down);
+        const away = b.lowerAt === undefined ? 0 : clamp01((t - b.lowerAt) / T.lower);
+        const armRaise = away > 0
+          ? HOLD + (CARRY - HOLD) * ease(away)
+          : up > 0
+            ? CARRY + (HOLD - CARRY) * ease(up)
+            : robotDefaults.armRaise + (CARRY - robotDefaults.armRaise) * ease(down);
+
+        /* The sheet lies flat when it is down and opens as it comes up, on the
+         * same progress as the arms. Both ends of the beat get it: it is born
+         * flat and below the frame rather than appearing at full size 314px
+         * inside it, and it goes back the same way. Paper picked up off a
+         * surface really does rotate as it rises. */
+        const sheetTilt = away > 0
+          ? SHEET.tilt + (LAY - SHEET.tilt) * ease(away)
+          : LAY + (SHEET.tilt - LAY) * ease(up);
 
         return {
-          phase, rock, armRaise,
+          phase, rock, armRaise, sheetTilt,
           // The sheet may exist from the bottom of the reach onward — but
           // `draw` still has to see its projected top edge clear the frame
           // before it will show it, because "off screen" is a fact about
           // pixels, not about the arm angle.
-          sheet: t >= b.downAt + T.reachDown,
+          /* It exists from the bottom of the reach until it is back down
+           * there. It leaves the frame the way it entered — carried, below the
+           * crop — so there is nothing to hide and nothing to fade. */
+          sheet: t >= b.downAt + T.reachDown && away < 1,
           text: 1,
           entering: phase < START_PHASE + ENTRY_STEPS / 2,
-          label: t < b.walkAt ? "door" : phase < finish ? "walk"
-            : t < b.liftAt ? "reach down" : t < b.liftAt + T.lift ? "raise" : "read",
+          gone,
+          label: t < b.walkAt ? "door" : cycles < finish ? "walk"
+            : t < b.liftAt ? "reach down" : t < b.readAt ? "raise"
+            : away === 0 ? "read"
+            : away < 1 ? "put it away"
+            : gone ? "gone" : "leave",
           end: b.end,
         };
       }
@@ -369,9 +520,9 @@
       const handSpan = (robot) =>
         ((handPoint(robot, "arm.left").z - handPoint(robot, "arm.right").z) / 2) * SHEET.grip;
 
-      function sheetQuads(robot) {
+      function sheetQuads(robot, tilt = SHEET.tilt) {
         const [L, R] = [handPoint(robot, "arm.left"), handPoint(robot, "arm.right")];
-        const t = (SHEET.tilt * Math.PI) / 180;
+        const t = (tilt * Math.PI) / 180;
         const up = { x: -Math.sin(t), y: Math.cos(t), z: 0 };
         const nx = { x: Math.cos(t), y: Math.sin(t), z: 0 };
         const spanZ = restSpan ?? ((L.z - R.z) / 2) * SHEET.grip;
@@ -461,7 +612,17 @@
 
       /* ── drawing ─────────────────────────────────────────────────── */
 
-      let born = false;
+      const hudText = (t, f) =>
+        `${t.toFixed(2)}s / ${f.end.toFixed(2)}s   ${f.label}\n` +
+        `${plan.steps} steps in at ${CADENCE}/s = ${plan.seconds.toFixed(2)}s walking, ` +
+        `${plan.exitSteps} steps out past the lens at ${plan.turn}\u00b0\n` +
+        `standing ${plan.distance.toFixed(2)} from camera, ${(base.height).toFixed(2)} door-heights tall\n` +
+        `sheet ${plan.sheetWide.toFixed(0)}px wide` +
+        `\ncarried sheet's top edge sits ${(plan.carriedTop - innerHeight).toFixed(0)}px ` +
+        `${plan.carriedTop > innerHeight ? "below the frame" : "inside the frame"}` +
+        (scaleNow ? `\n${scaleNow}` : "") +
+        (landed ? `\nfinal frame, px off centre:  ${landed}` : "");
+
       let landed = null;
       let scaleNow = "";
       function draw(t) {
@@ -477,9 +638,14 @@
           rockAngle: base.rockAngle * f.rock,
           armRaise: f.armRaise,
         });
-        if (f.sheet) robot.parts.push({ name: "sheet", quads: sheetQuads(robot) });
+        if (f.sheet) robot.parts.push({ name: "sheet", quads: sheetQuads(robot, f.sheetTilt) });
 
         ctx.clearRect(0, 0, innerWidth, innerHeight);
+        if (f.gone) {
+          domSheet.classList.remove("on");
+          document.getElementById("hud").textContent = hudText(t, f);
+          return f.end;
+        }
         const solids = placeRobot(robot, pose);
 
 
@@ -498,15 +664,15 @@
         const placed = solids.find((s) => s.name === "sheet");
         if (placed) {
           const pts = placed.quads[0].points.map((p) => toScreen(projectCameraSpace(toCameraSpace(p))));
-          // Latch: once it has legitimately entered from below it stays, but
-          // it is never drawn on a frame where it would have appeared inside
-          // the picture. If the latch never opens, the gag does not work at
-          // this distance and the readout says so.
-          born = born || top > innerHeight;
           const w = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
           const h = Math.hypot(pts[3].x - pts[0].x, pts[3].y - pts[0].y);
-          domSheet.classList.toggle("on", f.text > 0);
-          if (f.text > 0) {
+          /* Laid flat the quad foreshortens to a line, where the homography is
+           * near-singular and the type is a smear of its own scaling. By then
+           * it is off the bottom of the frame anyway, so there is nothing to
+           * show and every reason not to transform it. */
+          const readable = h > 12 && Math.min(...pts.map((p) => p.y)) < innerHeight;
+          domSheet.classList.toggle("on", f.text > 0 && readable);
+          if (f.text > 0 && readable) {
             applyHomography(domSheet, pts);
             domSheet.style.opacity = f.text;
             scaleNow = `sheet quad ${w.toFixed(0)}x${h.toFixed(0)}px, fixed box ` +
@@ -516,6 +682,16 @@
           }
         } else {
           domSheet.classList.remove("on");
+        }
+
+        /* The way out only appears once there is something to close. It is
+         * also the signal that the entrance is over and the page is waiting
+         * on the reader rather than on a clock. */
+        if (f.label === "read" && dismissedAt === null) {
+          setDismissVisible(true);
+          /* Nothing left to hurry — from here the page is waiting on the
+           * reader, not the other way round. */
+          hurryButton.classList.remove("on");
         }
 
         if (f.label === "read") {
@@ -530,15 +706,7 @@
             `all ${spread(() => true).toFixed(0)}`;
         }
 
-        document.getElementById("hud").textContent =
-          `${t.toFixed(2)}s / ${f.end.toFixed(2)}s   ${f.label}\n` +
-          `${plan.steps} steps at ${CADENCE}/s = ${plan.seconds.toFixed(2)}s walking\n` +
-          `standing ${plan.distance.toFixed(2)} from camera, ${(base.height).toFixed(2)} door-heights tall\n` +
-          `sheet ${plan.sheetWide.toFixed(0)}px wide` +
-          `\ncarried sheet's top edge sits ${(plan.carriedTop - innerHeight).toFixed(0)}px ` +
-          `${plan.carriedTop > innerHeight ? "below the frame — can be hidden" : "INSIDE the frame — cannot be hidden"}` +
-          (scaleNow ? `\n${scaleNow}` : "") +
-          (landed ? `\nfinal frame, px off centre:  ${landed}` : "");
+        document.getElementById("hud").textContent = hudText(t, f);
         return f.end;
       }
 
@@ -549,16 +717,106 @@
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       }
 
+      /* ── the interaction ─────────────────────────────────────────── */
+
+      /* Three states and two edges, which is the whole of it: **closed**, and
+       * clicking about opens it; **open**, running the entrance and then
+       * holding on the read pose for as long as it takes; **closing**, from
+       * the dismissal through the walk off, ending back at closed.
+       *
+       * The dismissal is a *time* rather than a flag because everything
+       * downstream of it is still a timeline — `beats` needs to know when the
+       * lowering started, not merely that it did. Recording it on the same
+       * clock as the entrance keeps `frameAt` a pure function of `t` and one
+       * number, which is what makes `?t=` frames reproducible.
+       */
       let raf = null;
+      let started = null;
+      let dismissedAt = null;
+      let opens = 0;
+
+      /* A virtual clock, so "speed up" can change the rate mid-walk without
+       * anything jumping. `frameAt` is a pure function of elapsed seconds, so
+       * the honest way to hurry him along is to hand it seconds faster —
+       * rather than to reach into the cadence, which is welded to the gait and
+       * would put his feet back to skating the moment it changed.
+       *
+       * Rate changes bank the virtual time spent so far and restart the
+       * measurement, which is what keeps the transition seamless: at the
+       * instant of the change both formulas give the same answer. */
+      let clockBase = 0;
+      let clockFrom = 0;
+      let rate = 1;
+
+      const now = () => clockBase + ((performance.now() - clockFrom) / 1000) * rate;
+
+      function setRate(next) {
+        clockBase = now();
+        clockFrom = performance.now();
+        rate = next;
+      }
+      /* `isOpen`, not `open`: `frameAt` already has a local `open` for the
+       * door's swing angle, and two different meanings of the word in one
+       * file is one too many. */
+      const isOpen = () => started !== null;
+
       function play() {
         cancelAnimationFrame(raf);
-        born = false; landed = null;
-        const started = performance.now();
-        raf = requestAnimationFrame(function step(now) {
-          const t = (now - started) / 1000;
+        landed = null;
+        dismissedAt = null;
+        started = performance.now();
+        clockBase = 0;
+        clockFrom = started;
+        rate = 1;
+        opens += 1;
+        /* Second visit onward. He is worth watching once; after that a reader
+         * who already knows the joke should be able to say so. */
+        hurryButton.classList.toggle("on", opens > 1);
+        raf = requestAnimationFrame(function step() {
+          const t = now();
           const end = draw(t);
+          /* Auto-dismiss, for `?read=`. Checked here rather than in `draw` so
+           * that a hand-driven dismissal and a scripted one go through exactly
+           * the same door. */
+          if (AUTO_READ !== null && dismissedAt === null && t >= beats().readAt + AUTO_READ) {
+            dismiss();
+          }
           if (t < end + 1.4) raf = requestAnimationFrame(step);
+          else close();
         });
+      }
+
+      function dismiss() {
+        if (!isOpen() || dismissedAt !== null) return;
+        dismissedAt = now();
+        setDismissVisible(false);
+        hurryButton.classList.remove("on");
+      }
+
+      function hurry() {
+        if (!isOpen() || rate !== 1) return;
+        setRate(HURRY_RATE);
+        hurryButton.classList.remove("on");
+      }
+
+      function close() {
+        cancelAnimationFrame(raf);
+        raf = null;
+        started = null;
+        dismissedAt = null;
+        setDismissVisible(false);
+        hurryButton.classList.remove("on");
+        domSheet.classList.remove("on", "grabbable");
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        setDoorAngle(DOOR_PANEL.rest);
+      }
+
+      /* The × rides on the sheet, so it needs no showing or hiding of its own
+       * — it is visible exactly when the paper is. This only decides when the
+       * paper becomes *clickable*: while it is still riding up into frame a
+       * click belongs to the backdrop, not to the page. */
+      function setDismissVisible(on) {
+        domSheet.classList.toggle("grabbable", on);
       }
 
       /* Laid out at the size it is read at: the box is the resting sheet in
@@ -572,17 +830,58 @@
       }
 
       addEventListener("room:layout", () => { resize(); plan = makePlan(); sizeSheet(); });
-      addEventListener("keydown", (e) => { if (e.key === " ") { e.preventDefault(); play(); } });
-      addEventListener("click", play);
+
+      /* Space replays, because reloading to watch it again is the study's
+       * whole workflow. Click-anywhere-to-replay is gone: a click now means
+       * dismiss, the way it does on a modal, and the two cannot share a
+       * gesture. */
+      addEventListener("keydown", (event) => {
+        if (event.key === " ") { event.preventDefault(); play(); }
+        if (event.key === "Escape" && isOpen()) dismiss();
+      });
+
+      aboutLink.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (isOpen()) dismiss(); else play();
+      });
+
+      dismissButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        dismiss();
+      });
+
+      hurryButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        hurry();
+      });
+
+      /* Click away to close. The sheet itself is excluded — it is selectable
+       * text, which is the entire reason the copy is DOM and not canvas, and
+       * a modal that closes when you try to select its contents is broken.
+       * The masthead and the close button handle their own clicks above. */
+      addEventListener("click", (event) => {
+        if (!isOpen() || dismissedAt !== null) return;
+        if (event.target.closest(".sheet-dom, .masthead, .hurry")) return;
+        dismiss();
+      });
 
       resize();
       plan = makePlan();
       sizeSheet();
       document.getElementById("hint").textContent =
-        "space or click to replay\n?t=3.5 one frame  ?cadence=6  ?near=2.0  ?stepAngle=34";
+        "click about to open  ·  click away, \u00d7 or esc to close  ·  space replays\n" +
+        "reopen it for the speed-up link  \u00b7  ?hurry=2.2 sets how much faster\n" +
+        "?t=3.5 one frame  ?cadence=6  ?near=2.0  ?stepAngle=34  ?lay=-75  ?play=0\n" +
+        "?read=2.6 dismisses him automatically, for a determinate timeline";
 
-      if (query.has("t")) draw(num("t", 0));
-      else play();
+      if (query.has("t")) {
+        started = performance.now();
+        /* A static frame has no loop to notice the auto-dismiss, so set it up
+         * front. Without this `?t=99` renders the read pose forever and the
+         * close can never be inspected one frame at a time. */
+        if (AUTO_READ !== null) dismissedAt = beats().readAt + AUTO_READ;
+        draw(num("t", 0));
+      } else if (AUTOPLAY) play();
     </script>
     <script type="module" src="../../room.js"></script>
   </body>

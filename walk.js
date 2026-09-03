@@ -11,7 +11,14 @@
  */
 
 import { distanceWalked, robotScale, gaitTable, buildRobot, placeRobot } from "./robot.js";
-import { doorFootprint, CAMERA_IN_ROOM, project, mockupToScreen } from "./camera.js";
+import {
+  doorFootprint,
+  CAMERA_IN_ROOM,
+  project,
+  mockupToScreen,
+  toCameraSpace,
+  projectCameraSpace,
+} from "./camera.js";
 
 /**
  * Heading, in degrees, from a point on the floor toward the camera.
@@ -405,4 +412,115 @@ export function routePose(robot, route, options = {}) {
     arrived,
     turned: eased,
   };
+}
+
+/* ── walking back out ─────────────────────────────────────────────── */
+
+/**
+ * He cannot leave by walking into the lens, and it is worth writing down why,
+ * because it looks like it ought to work and it never can.
+ *
+ * The camera stands at one door-height. He is 0.4 of one. So he is entirely
+ * below the horizon, and everything below the horizon projects *toward* the
+ * horizon as it approaches — walking straight at the camera his crown goes
+ * y 446, 441, 435, converging on the horizon and never reaching it. His feet
+ * leave the bottom of the frame a step and a half in and his head simply stays
+ * in the middle of the picture getting wider, until the geometry detonates on
+ * the camera plane. There is no near plane in `camera.js` to catch that.
+ *
+ * So he leaves the way anyone walks past you: off to one side. Thirty degrees
+ * takes him off the left edge in about eleven steps with the nearest vertex
+ * still 1.6 door-heights in front of the lens, and it reads as the same
+ * gesture — he comes at the camera and then goes by it.
+ *
+ * The turn is delivered by an arc rather than a pivot, for the reason
+ * `aimedHandle` gives: a clockwork walker turns by walking, because that is all
+ * it can do. The first handle runs along the arrival heading, so the exit
+ * leaves tangent to the walk that fed it and there is no kink at the stop.
+ */
+export function exitRoute(route, { turn = 30, span = 4, bend = 0.45 } = {}) {
+  const from = route.at(route.length);
+  const unit = (degrees) => {
+    const radians = (degrees * Math.PI) / 180;
+    return { x: Math.cos(radians), z: Math.sin(radians) };
+  };
+  const arriving = unit(from.heading);
+  const leaving = unit(from.heading + turn);
+  const to = { x: from.x + leaving.x * span, z: from.z + leaving.z * span };
+
+  return buildRoute({
+    from: { x: from.x, z: from.z },
+    control1: {
+      x: from.x + arriving.x * bend * span,
+      z: from.z + arriving.z * bend * span,
+    },
+    control2: { x: to.x - leaving.x * bend * span, z: to.z - leaving.z * bend * span },
+    to,
+    arrive: "camera",
+  });
+}
+
+/**
+ * Two routes end to end, presented as one, with the second one truncated to
+ * however much of it is actually walked.
+ *
+ * Everything downstream keeps working because the result is still a route —
+ * same `at`, same units, a longer `length`. `routePose` clamps to `length` and
+ * would otherwise park him at the arrival treading air.
+ */
+export function extendRoute(route, exit, along = exit.length) {
+  return {
+    ...route,
+    length: route.length + along,
+    exitFrom: route.length,
+    at: (distance) =>
+      distance <= route.length ? route.at(distance) : exit.at(distance - route.length),
+  };
+}
+
+/**
+ * The exit arc, and how far along it he has to get before he is gone.
+ *
+ * Scanned forward rather than bisected. "Off screen" is not monotone in
+ * distance here: he leaves the frame and then, if the arc is long enough,
+ * passes behind the camera, where the projection turns inside out and every
+ * predicate about pixels becomes meaningless. A bisection reads that far side
+ * as "not gone" and walks the bracket into it. So this takes the *first*
+ * arc-length at which he is off frame with every vertex still `margin` in
+ * front of the lens, and it widens the arc only if that never happens.
+ */
+export function planExit(robot, route, scene, options = {}) {
+  const { margin = 0.5, turn = 30, spans = [4, 5, 6, 7], resolution = 0.02 } = options;
+  const toScreen = mockupToScreen(scene);
+
+  const goneAt = (exit) => {
+    for (let along = 0; along <= exit.length; along += resolution) {
+      const here = exit.at(along);
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      let safe = true;
+      for (const solid of placeRobot(robot, { ...here, facing: here.heading, travel: 0 })) {
+        for (const quad of solid.quads) {
+          for (const vertex of quad.points) {
+            const camSpace = toCameraSpace(vertex);
+            if (camSpace.z < margin) { safe = false; break; }
+            const point = toScreen(projectCameraSpace(camSpace));
+            x0 = Math.min(x0, point.x); x1 = Math.max(x1, point.x);
+            y0 = Math.min(y0, point.y); y1 = Math.max(y1, point.y);
+          }
+          if (!safe) break;
+        }
+        if (!safe) break;
+      }
+      if (!safe) return null;
+      if (x0 > window.innerWidth || x1 < 0 || y0 > window.innerHeight || y1 < 0) return along;
+    }
+    return null;
+  };
+
+  for (const span of spans) {
+    const exit = exitRoute(route, { turn, span });
+    const along = goneAt(exit);
+    if (along !== null) return { exit, along, span, turn };
+  }
+  return null;
 }

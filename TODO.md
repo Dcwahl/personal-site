@@ -34,14 +34,27 @@ follows from `DOOR_PLACEMENT`.
 - [ ] Wire the paper into `about.js`. Nothing of the study has landed on the
       live page yet, and `REACH_LIMITS.max` in `walk.js` has to be overturned or
       bypassed to let him come that close.
-- [ ] Decide where the sheet comes from. He arrives empty-handed and it appears
-      in his hands; it is too big to be born below the frame at any distance
-      that keeps it readable, and folding was rejected.
+- [x] Decide where the sheet comes from. He picks it up off something below the
+      frame: it is born lying flat, which puts it genuinely off-screen, and
+      opens as it rises. Lowering the arms alone never hides it — the top edge
+      bottoms out 314px inside the frame — so the tilt is what does the work,
+      at both ends. See "Laying it down, not cutting it" in `ROBOT.md`.
+- [x] Decide how he leaves. He puts the sheet back down, then walks past the
+      camera and off the left edge. He cannot walk *into* the lens — he is
+      shorter than the camera, so head-on he engulfs the frame instead of
+      leaving it. See "Walking back out" in `ROBOT.md`.
+- [ ] Wire the close into `about.js` along with the paper. Settled in the
+      study: it behaves as a modal — click away, ×, or Escape dismisses, the
+      sheet itself is excluded so the copy stays selectable, and a dismissal
+      during the entrance is honoured once he is up rather than dropped.
+- [ ] Idea, parked: something animating on the sheet itself — the paper is a
+      surface we control completely, so there is room for a bit of whimsy on it.
+- [x] Revisit repeat/skip behavior. No skip: a **speed up** link appears on the
+      second open and after, and only during the entrance. It scales the clock
+      rather than the cadence, so the gait stays honest.
 - [ ] Portrait fallback for the sheet. At 390px wide the type sets at ~9px.
       Probably folds into the portrait decision above.
-- [ ] Revisit repeat/skip behavior once content exists. A second click currently
-      resets the sequence, but a returning visitor should not have to wait
-      through the full entrance (~10s) to reach the bio.
+
 
 ## Before/around publishing
 
