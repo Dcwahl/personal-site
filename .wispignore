@@ -4,6 +4,7 @@ TODO.md
 ROBOT.md
 version.mjs
 .claude/
+.gitignore
 .DS_Store
 
 # Working studies
