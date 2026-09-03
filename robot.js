@@ -941,6 +941,54 @@ function order(solids) {
     return null;
   };
 
+  /**
+   * The plane that comes *closest* to separating two solids, and by how much it
+   * fails.
+   *
+   * For a joint this is still the right answer. Limbs are deliberately sunk
+   * into the torso so the joint shows no seam — the leg by 3% of body height,
+   * the arm by 6% — which means they interpenetrate, which means the exact test
+   * above finds nothing and the pair falls through to a scalar depth. That is
+   * how the near leg ended up drawn *behind* the torso while crossing in front
+   * of it: the torso is a big box and owns the nearest corner, even when the
+   * leg is the thing in front.
+   *
+   * The torso's side face still separates them in every sense that matters. It
+   * is only violated by the depth of the sink, and it knows which side of the
+   * body the leg is on, which no single depth per solid can.
+   */
+  const nearestSeparator = (a, b) => {
+    let margin = -Infinity;
+    let front = null;
+
+    for (const [source, other, outer] of [[a, b, "b"], [b, a, "a"]]) {
+      for (const { point, normal } of source.planes) {
+        const side = (p) =>
+          (p.x - point.x) * normal.x + (p.y - point.y) * normal.y + (p.z - point.z) * normal.z;
+        let worst = Infinity;
+        for (const p of other.hull) worst = Math.min(worst, side(p));
+        if (worst <= margin) continue;
+        margin = worst;
+        front = side(camera) > 0 ? outer : outer === "b" ? "a" : "b";
+      }
+    }
+    return { front, violation: -margin };
+  };
+
+  /** A solid's narrowest dimension, as the scale a violation is judged against. */
+  const thickness = (solid) => {
+    const span = (axis) => {
+      let low = Infinity;
+      let high = -Infinity;
+      for (const p of solid.hull) {
+        low = Math.min(low, p[axis]);
+        high = Math.max(high, p[axis]);
+      }
+      return high - low;
+    };
+    return Math.min(span("x"), span("y"), span("z"));
+  };
+
   const behind = new Map(solids.map((s) => [s, new Set()]));
   const fallback = [];
   for (let i = 0; i < solids.length; i += 1) {
@@ -953,8 +1001,23 @@ function order(solids) {
       else behind.get(a).add(b);
     }
   }
+  /* A sunk joint and a genuine tangle look different, and the gap between them
+   * is wide enough to act on: measured across a whole walk, a limb sunk into
+   * the torso misses separation by 3-22% of its own thickness, while boxes that
+   * really do pass through each other — the wind-up key's four, against each
+   * other and against the arm — miss by 31-103%. Below the threshold the
+   * near-separating plane is trustworthy and much better than depth (the
+   * leg/torso pair goes from 4 of 13 poses right to 9 of 13, and 3 of 9 to 6 of
+   * 9). Above it, neither answer is meaningful and the cheaper one is kept.
+   *
+   * Nothing here is exact, and it cannot be: two solids that interpenetrate
+   * have no correct back-to-front order, only a least-wrong one. */
+  const JOINT = 0.25;
   for (const [a, b] of fallback) {
-    if (a.nearest <= b.nearest) behind.get(a).add(b);
+    const near = nearestSeparator(a, b);
+    const sunk = near.front && near.violation < JOINT * Math.min(thickness(a), thickness(b));
+    const front = sunk ? near.front : a.nearest <= b.nearest ? "a" : "b";
+    if (front === "a") behind.get(a).add(b);
     else behind.get(b).add(a);
   }
 

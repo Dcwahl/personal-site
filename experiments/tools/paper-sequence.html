@@ -402,9 +402,8 @@
          * lean into the gait first, walk second. Same wind-up as the entrance,
          * because it is the same toy and it only knows one way to start.
          *
-         * Clamped to `readAt` so a dismissal that lands while he is still
-         * walking in is honoured the moment he is up, rather than swallowed.
-         * A click on a modal should always do something. */
+         * `dismissedAt` can only be set once he is up, so no clamp is needed
+         * — see `dismissable`. */
         const lowerAt = Math.max(dismissedAt, readAt);
         const leaveAt = lowerAt + T.lower;
         const exitAt = leaveAt + T.windUp;
@@ -670,9 +669,9 @@
            * near-singular and the type is a smear of its own scaling. By then
            * it is off the bottom of the frame anyway, so there is nothing to
            * show and every reason not to transform it. */
-          const readable = h > 12 && Math.min(...pts.map((p) => p.y)) < innerHeight;
-          domSheet.classList.toggle("on", f.text > 0 && readable);
-          if (f.text > 0 && readable) {
+          const legible = h > 12 && Math.min(...pts.map((p) => p.y)) < innerHeight;
+          domSheet.classList.toggle("on", f.text > 0 && legible);
+          if (f.text > 0 && legible) {
             applyHomography(domSheet, pts);
             domSheet.style.opacity = f.text;
             scaleNow = `sheet quad ${w.toFixed(0)}x${h.toFixed(0)}px, fixed box ` +
@@ -688,6 +687,7 @@
          * also the signal that the entrance is over and the page is waiting
          * on the reader rather than on a clock. */
         if (f.label === "read" && dismissedAt === null) {
+          readable = true;
           setDismissVisible(true);
           /* Nothing left to hurry — from here the page is waiting on the
            * reader, not the other way round. */
@@ -734,6 +734,9 @@
       let started = null;
       let dismissedAt = null;
       let opens = 0;
+      /* True from the moment he is holding the sheet up until the sequence
+       * ends. The one gate on whether a dismissal means anything. */
+      let readable = false;
 
       /* A virtual clock, so "speed up" can change the rate mid-walk without
        * anything jumping. `frameAt` is a pure function of elapsed seconds, so
@@ -765,6 +768,7 @@
         landed = null;
         dismissedAt = null;
         started = performance.now();
+        readable = false;
         clockBase = 0;
         clockFrom = started;
         rate = 1;
@@ -786,8 +790,19 @@
         });
       }
 
+      /* Only live once he is actually holding the sheet up.
+       *
+       * It used to accept a dismissal at any time and clamp it forward to the
+       * read pose, on the theory that a click should never be swallowed. In
+       * practice that is worse than swallowing it: you click somewhere during
+       * the walk, nothing happens, you forget about it, and then the moment he
+       * finally gets the sheet up it slams shut in your face. A modal that has
+       * not finished opening has nothing to close — the click has no meaning
+       * yet, and pretending otherwise just defers the surprise. */
+      const dismissable = () => isOpen() && dismissedAt === null && readable;
+
       function dismiss() {
-        if (!isOpen() || dismissedAt !== null) return;
+        if (!dismissable()) return;
         dismissedAt = now();
         setDismissVisible(false);
         hurryButton.classList.remove("on");
@@ -804,6 +819,7 @@
         raf = null;
         started = null;
         dismissedAt = null;
+        readable = false;
         setDismissVisible(false);
         hurryButton.classList.remove("on");
         domSheet.classList.remove("on", "grabbable");
@@ -837,12 +853,16 @@
        * gesture. */
       addEventListener("keydown", (event) => {
         if (event.key === " ") { event.preventDefault(); play(); }
-        if (event.key === "Escape" && isOpen()) dismiss();
+        if (event.key === "Escape") dismiss();
       });
 
       aboutLink.addEventListener("click", (event) => {
         event.preventDefault();
-        if (isOpen()) dismiss(); else play();
+        /* About toggles. While he is still walking in there is nothing to
+         * close yet, so it restarts instead — which is what a second click on
+         * a link that is already running should do. */
+        if (dismissable()) dismiss();
+        else if (!isOpen()) play();
       });
 
       dismissButton.addEventListener("click", (event) => {
@@ -860,7 +880,7 @@
        * a modal that closes when you try to select its contents is broken.
        * The masthead and the close button handle their own clicks above. */
       addEventListener("click", (event) => {
-        if (!isOpen() || dismissedAt !== null) return;
+        if (!dismissable()) return;
         if (event.target.closest(".sheet-dom, .masthead, .hurry")) return;
         dismiss();
       });

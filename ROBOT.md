@@ -393,9 +393,15 @@ reproducible.
 
 Three states, two edges: **closed**, and clicking *about* opens it; **open**,
 running the entrance and then holding; **closing**, from the dismissal through
-the walk off and back to closed. A dismissal that arrives while he is still
-walking in is clamped to the read pose rather than dropped, so a click is never
-swallowed.
+the walk off and back to closed.
+
+A dismissal only counts once he is actually holding the sheet up. The first
+version accepted one at any time and clamped it forward to the read pose, on
+the theory that a click should never be swallowed. That is worse than
+swallowing it: you click during the walk, nothing happens, you forget, and then
+the instant he gets the sheet up it slams shut in your face. A modal that has
+not finished opening has nothing to close — the click has no meaning yet, and
+deferring it only defers the surprise.
 
 Dismissed by clicking away, by the ×, or by Escape. The sheet itself is
 excluded from click-away: it is selectable text — the entire reason the copy is
@@ -520,6 +526,51 @@ only if that never happens.
   in `TODO.md`.
 
 ## Open
+
+### The arms pass through the torso
+
+Known, and deliberately not fixed — it is minor next to what it would cost.
+
+The legs had the same *symptom* and a different cause. Limbs are sunk into the
+torso so the joints show no seam, which means they interpenetrate, which means
+`separates` finds no plane and the pair falls through to one depth scalar per
+solid. The torso is a big box and owns the nearest corner even when the leg is
+in front of it, so the near leg drew behind the body. Fixed by using the plane
+that comes *closest* to separating them, which still knows which side of the
+body the limb is on — gated on the violation being under 25% of the limb's
+thickness, since sunk joints miss separation by 3-22% while genuinely tangled
+boxes (the key's four, against each other and the arm) miss by 31-103%. The
+leg/torso pair went from 4 of 13 poses right to 9 of 13, and 3 of 9 to 6 of 9.
+
+The arm is not a sunk joint. It passes *through* the torso, 6% of body height
+deep, with the shoulder end genuinely behind and the hand end genuinely in
+front. Ray-casting the contested pixels: the torso is nearer in 83% of them and
+the arm in the other 17%, and those 17% are the crossing that looks wrong. **No
+back-to-front ordering can be right there** — that is the failure mode a
+painter's algorithm has by definition, not a bug in this one. The fixes are rig
+changes, not sort changes:
+
+1. **Split the arm at the elbow.** The forearm then sits entirely outside the
+   torso and sorts correctly on its own. Costs a seam line at the elbow.
+2. **Move the shoulder out** to the torso's surface so the arm abuts instead of
+   passing through. No new geometry, but the arms sit wider and a gap may open
+   at some swing angles.
+
+### How this was verified
+
+Worth recording, because none of it involved looking at the drawing.
+
+- **Which pairs fall through.** The sort's pairwise test, reimplemented in a
+  Node probe, reporting every overlapping pair with no separating plane.
+- **What the right answer is.** A hand-rolled depth test: take the intersection
+  of two solids' screen boxes, cast a ray through each sample point, intersect
+  it with every front-facing quad of both, and compare the nearest hit. This
+  answers "which is in front *here*" with no ordering assumption, and it is what
+  showed that the arm is genuinely both.
+- **What the shipped code actually does.** `drawRobot` driven with a stub canvas
+  context that records `moveTo` calls; each face begins with exactly one, so
+  mapping first vertices back to solids recovers the real draw order. This is
+  the only one of the three that tests the shipped path rather than a copy.
 
 ### The shuffle gait
 

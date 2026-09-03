@@ -56,6 +56,15 @@ follows from `DOOR_PLACEMENT`.
       Probably folds into the portrait decision above.
 
 
+## Known and accepted
+
+- [ ] The arms draw behind the torso where they cross in front of it. They pass
+      *through* the torso rather than being sunk into it, so no back-to-front
+      order is correct — 83% of the contested pixels want the torso in front and
+      17% want the arm. Fixing it means splitting the arm at the elbow or moving
+      the shoulder out to the surface; both change how he looks. Minor, left
+      alone deliberately. See "The arms pass through the torso" in `ROBOT.md`.
+
 ## Before/around publishing
 
 - [ ] Favicon — none yet.
