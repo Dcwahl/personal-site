@@ -28,9 +28,31 @@ The room scene lives at the repository root and *is* the site:
 | `about.js` | The about sequence: door, reveal, walk |
 | `flight.js` | Paper-plane motion and camera |
 | `trail.js` | The etched trail the plane leaves behind |
+| `palette.js` | The three colours everything is drawn in, and the switcher |
 | `door.svg` | The door artwork |
 
 Stop the server with `Ctrl-C` in the terminal where it is running.
+
+### Colour
+
+The room is line art on flat paper, so the whole look is three values: `--paper`
+(the walls), `--ink` (every line), and `--beyond` (what the open door reveals).
+They live in `:root` in `styles.css`; `palette.js` is the only thing that writes
+them, and the canvas layers read them back rather than keeping their own copies.
+
+To look at alternatives against the live scene:
+
+| | |
+| --- | --- |
+| `?palette=night` | load a named palette — it sticks across reloads |
+| `?palette=clay` | back to the default |
+| `Shift+P` | cycle to the next one, logging its name |
+
+The named sets are at the top of `palette.js`. The door is an `<img>`, so CSS
+cannot reach its ink: `palette.js` re-fetches `door.svg` and hands the element a
+recoloured copy. That is skipped for the default palette, whose ink is what the
+file already carries.
+
 
 ### Development tools
 
@@ -129,12 +151,12 @@ creating another one.
 **`deploy` does not ask before uploading.** Older notes here said it prompts
 with the file list; `wispctl` 1.3.2 does not — it prints the count and the URLs
 only once the upload is already done. There is no chance to abort, so the check
-has to happen afterwards. Expect **13 files**:
+has to happen afterwards. Expect **14 files**:
 
 ```text
 index.html  styles.css  scene.js   room.js    door.js   camera.js
 robot.js    walk.js     paper.js   about.js   flight.js trail.js
-door.svg
+door.svg    palette.js
 ```
 
 If `deploy` reports any other count, something outside that list was published.

@@ -16,11 +16,11 @@
  * to feel any of it — the two share `paper.js` rather than a copy.
  */
 
-import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=2";
-import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=2";
-import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=2";
-import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=2";
-import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=2";
+import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=3";
+import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=3";
+import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=3";
+import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=3";
+import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=3";
 import {
   planPaper,
   applyHomography,
@@ -30,7 +30,7 @@ import {
   LAY,
   SHEET,
   ENTRY_STEPS,
-} from "./paper.js?v=2";
+} from "./paper.js?v=3";
 
 const canvas = document.querySelector(".stage--robot");
 const context = canvas.getContext("2d");
@@ -530,6 +530,13 @@ dismissButton?.addEventListener("click", (event) => {
 hurryButton?.addEventListener("click", (event) => {
   event.stopPropagation();
   hurry();
+});
+
+document.querySelector('.room__door-hit a')?.addEventListener("click", (event) => {
+  // The door opens About; clicking it again must not dismiss the paper or
+  // restart the entrance. Otherwise let the native #about link do its work.
+  event.stopPropagation();
+  if (isOpen()) event.preventDefault();
 });
 
 /* Click away to close. The sheet itself is excluded — it is selectable text,

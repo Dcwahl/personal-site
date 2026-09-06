@@ -1,6 +1,14 @@
+/*
+ * The three colours the whole site is made of. These are the live values:
+ * `palette.js` overwrites them on the root element to try an alternative, and
+ * the canvas layers read them back out, so nothing anywhere else spells a
+ * colour out. `--ink-rgb` is the same ink in channel form, for the several
+ * places that want it at reduced alpha.
+ */
 :root {
   --paper: #dac9a4;
   --ink: #17140f;
+  --ink-rgb: 23 20 15;
   --beyond: #cd9268;
 
   color: var(--ink);
@@ -69,7 +77,7 @@ h1 {
  */
 .doorway__panel {
   fill: var(--paper);
-  stroke: rgb(23 20 15 / 88%);
+  stroke: rgb(var(--ink-rgb) / 88%);
   stroke-width: var(--seam-weight, 1.9);
 }
 
@@ -80,7 +88,7 @@ h1 {
  */
 .room__seams path {
   fill: none;
-  stroke: rgb(23 20 15 / 88%);
+  stroke: rgb(var(--ink-rgb) / 88%);
   stroke-width: var(--seam-weight, 1.9);
   stroke-linecap: round;
 }
@@ -97,6 +105,31 @@ h1 {
 }
 
 /* ── chrome ───────────────────────────────────────────────────────── */
+
+.room__door-hit {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.room__door-hit path {
+  fill: transparent;
+  pointer-events: fill;
+  cursor: pointer;
+}
+
+.room__door-hit a:focus-visible {
+  outline: none;
+}
+
+.room__door-hit a:focus-visible path {
+  stroke: var(--ink);
+  stroke-width: 3;
+  stroke-dasharray: 5 4;
+}
 
 .masthead {
   position: fixed;
@@ -204,7 +237,7 @@ h1 {
 .sheet__sign {
   margin-top: 1.6em;
   padding-top: 1.1em;
-  border-top: 0.09em solid rgb(23 20 15 / 22%);
+  border-top: 0.09em solid rgb(var(--ink-rgb) / 22%);
   align-self: start;
   padding-right: 3em;
 }
@@ -271,7 +304,7 @@ h1 {
 .sheet__sign a {
   color: inherit;
   text-decoration: none;
-  border-bottom: 0.06em solid rgb(23 20 15 / 35%);
+  border-bottom: 0.06em solid rgb(var(--ink-rgb) / 35%);
   padding-bottom: 0.15em;
 }
 

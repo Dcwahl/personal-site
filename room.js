@@ -1,9 +1,10 @@
-import { buildScene } from "./scene.js?v=2";
-import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=2";
+import { buildScene } from "./scene.js?v=3";
+import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=3";
 
 const svg = document.querySelector(".room__seams");
 const door = document.querySelector(".room__door");
 const doorway = document.querySelector(".room__doorway");
+const doorHit = document.querySelector(".room__door-hit");
 const doorPart = (name) => doorway.querySelector(`[data-door="${name}"]`);
 
 const path = (points) =>
@@ -19,6 +20,7 @@ function layoutDoorway() {
   doorPart("hole").setAttribute("d", opening);
   doorPart("clip").setAttribute("d", opening);
   doorPart("panel").setAttribute("d", panelPath(scene, doorAngle));
+  doorHit?.querySelector("path").setAttribute("d", opening);
 }
 
 export function setDoorAngle(degrees) {
@@ -34,6 +36,7 @@ export function layoutRoom() {
   for (const target of [svg, doorway]) {
     target.setAttribute("viewBox", `0 0 ${width} ${height}`);
   }
+  doorHit?.setAttribute("viewBox", `0 0 ${width} ${height}`);
   for (const [name, points] of Object.entries(scene.seams)) {
     svg.querySelector(`[data-seam="${name}"]`).setAttribute("d", path(points));
   }

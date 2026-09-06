@@ -2,7 +2,8 @@ import {
   buildTrailDots,
   drawTrail as drawTrailDots,
   trailStyle,
-} from "./trail.js?v=2";
+} from "./trail.js?v=3";
+import { ink } from "./palette.js?v=3";
 
 const canvas = document.querySelector(".stage--plane");
 const context = canvas.getContext("2d");
@@ -206,14 +207,11 @@ function getHeading(progress) {
   return Math.atan2(to.y - from.y, to.x - from.x);
 }
 
-function getPlaneRotation(progress, elapsed) {
-  const steppedSeconds =
-    Math.floor((elapsed / 1_000) * rotationFramesPerSecond) /
-    rotationFramesPerSecond;
-  const steppedProgress = Math.min(
-    1,
-    steppedSeconds / (flightDuration / 1_000),
-  );
+function getPlaneRotation(progress) {
+  // Only pitch, yaw and roll are stepped; travel and depth stay smooth.
+  const steppedProgress =
+    Math.floor(progress * (flightDuration / 1_000) * rotationFramesPerSecond) /
+    (rotationFramesPerSecond * (flightDuration / 1_000));
   const glidePhase = getGlidePhase(steppedProgress);
   const bankPosition = steppedProgress * flightProfile.oscillations;
   const bankSegment = Math.floor(bankPosition);
@@ -250,8 +248,8 @@ function drawTrail(progress, ageOffset = 0) {
   });
 }
 
-function drawPlane(centerX, centerY, elapsed, progress) {
-  const rotation = getPlaneRotation(progress, elapsed);
+function drawPlane(centerX, centerY, progress) {
+  const rotation = getPlaneRotation(progress);
   const size =
     Math.max(16, Math.min(29, viewport.width / 57)) * rotation.depthScale;
   const heading = getHeading(progress);
@@ -276,7 +274,7 @@ function drawPlane(centerX, centerY, elapsed, progress) {
   context.lineWidth = 1.35;
   context.lineJoin = "round";
   context.lineCap = "round";
-  context.strokeStyle = "rgba(23, 20, 15, 0.9)";
+  context.strokeStyle = ink(0.9);
   context.stroke();
   context.restore();
 }
@@ -285,7 +283,7 @@ function drawReducedMotionFrame() {
   const progress = 0.54;
   const point = getFlightPosition(progress);
   drawTrail(progress);
-  drawPlane(point.x, point.y, progress * flightDuration, progress);
+  drawPlane(point.x, point.y, progress);
 }
 
 function render(now) {
@@ -321,7 +319,7 @@ function render(now) {
     const progress = cycleTime / flightDuration;
     const point = getFlightPosition(progress);
     drawTrail(progress);
-    drawPlane(point.x, point.y, cycleTime, progress);
+    drawPlane(point.x, point.y, progress);
   } else {
     drawTrail(1, cycleTime - flightDuration);
   }

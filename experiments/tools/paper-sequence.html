@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Paper sequence</title>
-    <link rel="stylesheet" href="../../styles.css?v=2" />
+    <link rel="stylesheet" href="../../styles.css?v=3" />
     <style>
       .hud {
         position: fixed; z-index: 6; left: 1rem; top: 1rem;
@@ -101,7 +101,7 @@
           <path class="doorway__beyond" data-door="hole" />
           <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
         </svg>
-        <img class="room__door" src="../../door.svg?v=2" alt="" />
+        <img class="room__door" src="../../door.svg?v=3" alt="" />
         <svg class="room__seams" preserveAspectRatio="none">
           <path data-seam="wallCorner" /><path data-seam="leftFloor" />
           <path data-seam="floorToDoor" /><path data-seam="floorPastDoor" />
@@ -128,14 +128,14 @@
     <div class="hint" id="hint"></div>
 
     <script type="module">
-      import { getScene, setDoorAngle } from "../../room.js?v=2";
-      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js?v=2";
-      import { mockupToScreen, toCameraSpace, projectCameraSpace } from "../../camera.js?v=2";
-      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js?v=2";
-      import { routePose, START_PHASE, extendRoute, planExit } from "../../walk.js?v=2";
+      import { getScene, setDoorAngle } from "../../room.js?v=3";
+      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js?v=3";
+      import { mockupToScreen, toCameraSpace, projectCameraSpace } from "../../camera.js?v=3";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js?v=3";
+      import { routePose, START_PHASE, extendRoute, planExit } from "../../walk.js?v=3";
       import {
         planPaper, applyHomography, HOLD, CARRY, LAY, SHEET, ENTRY_STEPS,
-      } from "../../paper.js?v=2";
+      } from "../../paper.js?v=3";
 
       const canvas = document.querySelector(".stage--robot");
       const ctx = canvas.getContext("2d");
@@ -643,6 +643,6 @@
         draw(num("t", 0));
       } else if (AUTOPLAY) play();
     </script>
-    <script type="module" src="../../room.js?v=2"></script>
+    <script type="module" src="../../room.js?v=3"></script>
   </body>
 </html>

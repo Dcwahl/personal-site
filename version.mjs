@@ -38,6 +38,7 @@ const FILES = [
   "camera.js",
   "door.js",
   "flight.js",
+  "palette.js",
   "paper.js",
   "robot.js",
   "room.js",

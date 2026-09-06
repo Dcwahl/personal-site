@@ -12,7 +12,8 @@
  * the shape is scale-free and `height` alone sizes it in the room.
  */
 
-import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=2";
+import { ink as paletteInk, paper as palettePaper } from "./palette.js?v=3";
+import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=3";
 
 export const robotDefaults = {
   /* Placement ─────────────────────────────────────────────────────── */
@@ -1045,7 +1046,7 @@ function order(solids) {
 }
 
 export function drawRobot(context, solids, toScreen, style = {}) {
-  const { ink = "rgba(23, 20, 15, 0.9)", paper = "#dac9a4", weight = 1.35 } = style;
+  const { ink = paletteInk(0.9), paper = palettePaper(), weight = 1.35 } = style;
 
   /* Solve visibility one solid at a time.
    *

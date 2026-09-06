@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Robot tuner</title>
-    <link rel="stylesheet" href="../../styles.css?v=2" />
+    <link rel="stylesheet" href="../../styles.css?v=3" />
     <style>
       /* The room fills the viewport exactly as it does on the site; the panel
          floats over it, so what you tune is what the site would render. */
@@ -84,7 +84,7 @@
           <path class="doorway__beyond" data-door="hole" />
           <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
         </svg>
-        <img class="room__door" src="../../door.svg?v=2" alt="" />
+        <img class="room__door" src="../../door.svg?v=3" alt="" />
         <svg class="room__seams" preserveAspectRatio="none">
           <path data-seam="wallCorner" /><path data-seam="leftFloor" />
           <path data-seam="floorToDoor" /><path data-seam="floorPastDoor" />
@@ -133,14 +133,14 @@
     </aside>
 
     <script type="module">
-      import { buildScene } from "../../scene.js?v=2";
-      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js?v=2";
-      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js?v=2";
-      import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js?v=2";
+      import { buildScene } from "../../scene.js?v=3";
+      import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "../../door.js?v=3";
+      import { buildRobot, placeRobot, drawRobot, robotDefaults, robotPresets } from "../../robot.js?v=3";
+      import { project, mockupToScreen, doorFootprint, ROOM_CAMERA } from "../../camera.js?v=3";
       import {
         buildRoute, routePose, routeCycles, doorRoute, quantiseReach, stepLength,
         planRoute, START_PHASE,
-      } from "../../walk.js?v=2";
+      } from "../../walk.js?v=3";
 
       /* Slider ranges. Anything not listed here is not meant to be tuned. */
       const GROUPS = [

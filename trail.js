@@ -8,6 +8,8 @@
  * makes the plane read as etching the line rather than dragging it.
  */
 
+import { ink } from "./palette.js?v=3";
+
 /** Tunable look of the trail. `length: 0` renders round dots. */
 export const trailStyle = {
   spacing: 12, // distance between mark centres, px
@@ -60,7 +62,7 @@ export function drawTrail(context, dots, options) {
   const half = length / 2;
 
   context.save();
-  context.strokeStyle = "rgb(23, 20, 15)";
+  context.strokeStyle = ink();
   context.lineWidth = width;
   context.lineCap = "round";
 
