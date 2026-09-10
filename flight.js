@@ -2,8 +2,8 @@ import {
   buildTrailDots,
   drawTrail as drawTrailDots,
   trailStyle,
-} from "./trail.js?v=3";
-import { ink } from "./palette.js?v=3";
+} from "./trail.js?v=4";
+import { ink } from "./palette.js?v=4";
 
 const canvas = document.querySelector(".stage--plane");
 const context = canvas.getContext("2d");

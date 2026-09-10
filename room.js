@@ -1,5 +1,5 @@
-import { buildScene } from "./scene.js?v=3";
-import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=3";
+import { buildScene } from "./scene.js?v=4";
+import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=4";
 
 const svg = document.querySelector(".room__seams");
 const door = document.querySelector(".room__door");

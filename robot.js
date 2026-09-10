@@ -12,8 +12,8 @@
  * the shape is scale-free and `height` alone sizes it in the room.
  */
 
-import { ink as paletteInk, paper as palettePaper } from "./palette.js?v=3";
-import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=3";
+import { ink as paletteInk, paper as palettePaper } from "./palette.js?v=4";
+import { toCameraSpace, projectCameraSpace, ROOM_CAMERA, CAMERA_IN_ROOM } from "./camera.js?v=4";
 
 export const robotDefaults = {
   /* Placement ─────────────────────────────────────────────────────── */

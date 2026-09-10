@@ -8,7 +8,7 @@
  * makes the plane read as etching the line rather than dragging it.
  */
 
-import { ink } from "./palette.js?v=3";
+import { ink } from "./palette.js?v=4";
 
 /** Tunable look of the trail. `length: 0` renders round dots. */
 export const trailStyle = {
