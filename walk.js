@@ -10,7 +10,7 @@
  * the rate its feet carry it however the route bends.
  */
 
-import { distanceWalked, robotScale, gaitTable, buildRobot, placeRobot } from "./robot.js?v=4";
+import { distanceWalked, robotScale, gaitTable, buildRobot, placeRobot } from "./robot.js?v=5";
 import {
   doorFootprint,
   CAMERA_IN_ROOM,
@@ -18,7 +18,7 @@ import {
   mockupToScreen,
   toCameraSpace,
   projectCameraSpace,
-} from "./camera.js?v=4";
+} from "./camera.js?v=5";
 
 /**
  * Heading, in degrees, from a point on the floor toward the camera.

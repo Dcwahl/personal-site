@@ -1,5 +1,5 @@
-import { buildScene } from "./scene.js?v=4";
-import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=4";
+import { buildScene } from "./scene.js?v=5";
+import { DOOR_PANEL, EDGE_ON, openingPath, panelPath } from "./door.js?v=5";
 
 const svg = document.querySelector(".room__seams");
 const door = document.querySelector(".room__door");
@@ -32,6 +32,7 @@ export function layoutRoom() {
   const width = window.innerWidth;
   const height = window.innerHeight;
   scene = buildScene(width, height);
+  document.documentElement.style.setProperty("--room-corner-x", `${scene.corner.x}px`);
 
   for (const target of [svg, doorway]) {
     target.setAttribute("viewBox", `0 0 ${width} ${height}`);

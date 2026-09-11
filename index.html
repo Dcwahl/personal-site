@@ -9,7 +9,7 @@
       name="description"
       content="Diego Wahl — design portfolio."
     />
-    <link rel="stylesheet" href="styles.css?v=4" />
+    <link rel="stylesheet" href="styles.css?v=5" />
   </head>
   <body>
     <main>
@@ -33,7 +33,7 @@
           <path class="doorway__beyond" data-door="hole" />
           <path class="doorway__panel" data-door="panel" clip-path="url(#doorway-clip)" />
         </svg>
-        <img class="room__door" src="door.svg?v=4" alt="" />
+        <img class="room__door" src="door.svg?v=5" alt="" />
         <svg class="room__seams" preserveAspectRatio="none">
           <path data-seam="wallCorner" />
           <path data-seam="leftFloor" />
@@ -67,6 +67,7 @@
       <div class="sheet">
         <div class="sheet__inner">
           <button class="sheet__close" type="button" aria-label="Close">&#215;</button>
+          <div class="sheet__copy" tabindex="0" role="region" aria-label="About Diego">
           <p class="sheet__label">About</p>
           <p>Howdy, I&rsquo;m Diego, a senior software engineer working across the stack.</p>
           <p>I work across a pretty wide spread of apps and services, building
@@ -75,6 +76,7 @@
           <p>These days, a lot of my work involves wrangling LLMs, about which I
             have some thoughts.</p>
           <p class="sheet__sign"><a href="mailto:diegowahl@gmail.com">diegowahl@gmail.com</a></p>
+          </div>
         </div>
       </div>
 
@@ -83,9 +85,9 @@
 
     <!-- First: it writes the colour custom properties the stylesheet and the
          canvas layers both read. -->
-    <script type="module" src="palette.js?v=4"></script>
-    <script type="module" src="room.js?v=4"></script>
-    <script type="module" src="flight.js?v=4"></script>
-    <script type="module" src="about.js?v=4"></script>
+    <script type="module" src="palette.js?v=5"></script>
+    <script type="module" src="room.js?v=5"></script>
+    <script type="module" src="flight.js?v=5"></script>
+    <script type="module" src="about.js?v=5"></script>
   </body>
 </html>

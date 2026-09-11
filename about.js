@@ -16,11 +16,11 @@
  * to feel any of it — the two share `paper.js` rather than a copy.
  */
 
-import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=4";
-import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=4";
-import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=4";
-import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=4";
-import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=4";
+import { getScene, getDoorAngle, openDoor, closeDoor, setDoorAngle } from "./room.js?v=5";
+import { DOOR_PANEL, openingPath, panelPath } from "./door.js?v=5";
+import { mockupToScreen, toCameraSpace, projectCameraSpace } from "./camera.js?v=5";
+import { buildRobot, placeRobot, drawRobot, robotDefaults } from "./robot.js?v=5";
+import { routePose, extendRoute, planExit, START_PHASE } from "./walk.js?v=5";
 import {
   planPaper,
   applyHomography,
@@ -30,7 +30,7 @@ import {
   LAY,
   SHEET,
   ENTRY_STEPS,
-} from "./paper.js?v=4";
+} from "./paper.js?v=5";
 
 const canvas = document.querySelector(".stage--robot");
 const context = canvas.getContext("2d");
@@ -487,6 +487,14 @@ window.addEventListener("room:layout", () => {
   if (!isOpen()) {
     rebuildPlan();
     sizeSheet();
+  } else if (readable && dismissedAt === null) {
+    // Once he has stopped, refit the reading pose after a rotation or a mobile
+    // browser toolbar resize. Keep the entrance route frozen while he walks.
+    rebuildPlan();
+    sizeSheet();
+    clockBase = beats().readAt;
+    clockFrom = performance.now();
+    drawFrame(frameAt(clockBase), { clip: false });
   }
 });
 
