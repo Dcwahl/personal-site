@@ -36,6 +36,16 @@ Stop the server with `Ctrl-C` in the terminal where it is running.
 
 Not part of the site, and excluded from publication:
 
+
+- <http://localhost:4173/experiments/tools/cart-study.html> — arcade delivery
+  playground with a separate lanky porter robot, push/backward-pull modes,
+  adjustable load, pause and replay. Press **games** to start. `?t=99` shows
+  the arrived pose; `?play=1` starts automatically. Reduced motion skips the
+  delivery. This is a motion study; the cabinet does not launch games yet.
+  After delivery, **step closer** zooms toward the screen. The **Framing**
+  slider explores whole-cabinet through screen-and-bezel views; **back to room**
+  or Escape reverses the move. This is an optical zoom/pan, with the room art
+  and freshly rendered canvas sharing the same transform.
 - <http://localhost:4173/experiments/tools/trail-tuner.html> — sliders for the
   trail's mark length, width, spacing, and opacity. It imports the same
   `trail.js` the site uses, so what you tune is what you get. Paste the values
